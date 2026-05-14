@@ -45,3 +45,17 @@ Use the repo URL with the `addons/gdgs` subfolder so the installed addon lands a
   }
 }
 ```
+
+## Clean restore guidance for consuming repos
+
+`aerobeat-vendor-gdgs` intentionally stays a raw vendor pin, so the delete-first
+restore helpers live in the consuming repos that own the GodotEnv workbenches.
+For the current AeroBeat consumers, use:
+
+- `aerobeat-tool-gaussian-splat/scripts/restore-testbed-addons.sh`
+- `aerobeat-environment-community/scripts/restore-testbed-addons.sh`
+
+Those helpers clear the generated install targets first (`.testbed/addons/*`
+except `.editorconfig`, plus `.testbed/.addons/`) and then rerun
+`godotenv addons install`. That is the canonical fix when Godot-generated import
+artifacts make a gdgs reinstall non-idempotent.
