@@ -1,0 +1,14 @@
+; Engine configuration file.
+; Minimal vendor-lane control project for the upstream gdgs happy path.
+
+config_version=5
+
+[application]
+
+config/name="AeroBeat Vendor GDGS Control"
+run/main_scene="res://scenes/gdgs_happy_path_control.tscn"
+config/features=PackedStringArray("4.6", "Forward Plus")
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/gdgs/plugin.cfg")

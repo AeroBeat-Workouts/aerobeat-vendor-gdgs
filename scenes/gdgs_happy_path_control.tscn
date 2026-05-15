@@ -1,0 +1,74 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://addons/gdgs/runtime/nodes/gaussian_splat_node.gd" id="1_72a8a"]
+[ext_resource type="Resource" path="res://samples/assets/demo.compressed.ply" id="2_ptyrh"]
+[ext_resource type="Script" path="res://addons/gdgs/runtime/compositor/gaussian_compositor_effect.gd" id="3_knnmi"]
+
+[sub_resource type="Environment" id="Environment_26rua"]
+background_mode = 1
+background_color = Color(0.04, 0.04, 0.06, 1)
+
+[sub_resource type="CompositorEffect" id="CompositorEffect_80pe4"]
+resource_local_to_scene = false
+resource_name = ""
+enabled = true
+effect_callback_type = 3
+access_resolved_color = false
+access_resolved_depth = true
+needs_motion_vectors = false
+needs_normal_roughness = false
+script = ExtResource("3_knnmi")
+
+[sub_resource type="Compositor" id="Compositor_ntsa8"]
+compositor_effects = Array[CompositorEffect]([SubResource("CompositorEffect_80pe4")])
+
+[node name="GdgsHappyPathControl" type="Node3D" unique_id=1446188839]
+
+[node name="GaussianSplatNode" type="VisualInstance3D" parent="." unique_id=747233294]
+unique_name_in_owner = false
+process_mode = 0
+process_priority = 0
+process_physics_priority = 0
+process_thread_group = 0
+physics_interpolation_mode = 0
+auto_translate_mode = 0
+editor_description = ""
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+rotation_edit_mode = 0
+rotation_order = 2
+top_level = false
+visible = true
+visibility_parent = NodePath("")
+layers = 1
+script = ExtResource("1_72a8a")
+gaussian = ExtResource("2_ptyrh")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1713555365]
+environment = SubResource("Environment_26rua")
+compositor = SubResource("Compositor_ntsa8")
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=1270277179]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 4)
+far = 100.0
+
+[node name="SunLight" type="DirectionalLight3D" parent="." unique_id=1715257337]
+transform = Transform3D(0.90630776, -0.24240388, 0.34618863, 0, 0.81915206, 0.57357645, -0.42261827, -0.5198368, 0.74240386, 0, 0, 0)
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=2110695065]
+
+[node name="HudMargin" type="MarginContainer" parent="CanvasLayer" unique_id=1547898451]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 520.0
+offset_bottom = 220.0
+
+[node name="HudLabel" type="RichTextLabel" parent="CanvasLayer/HudMargin" unique_id=1439798433]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+text = "[b]GDGS vendor happy-path control[/b]
+Sample: res://samples/assets/demo.compressed.ply
+README shape: GaussianSplatNode + WorldEnvironment + Compositor + gdgs CompositorEffect
+Renderer requirement: Forward Plus + desktop GPU compute support."
+fit_content = true
+scroll_active = false
