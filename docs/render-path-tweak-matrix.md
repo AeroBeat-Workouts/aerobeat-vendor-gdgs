@@ -15,7 +15,9 @@ While the scene is running:
 - `C` — toggle the compositor effect `enabled` flag
 - `M` — cycle `display_mode`
   - `Compositor`
-  - `Direct Texture`
+  - `Direct Texture (World Overlay)`
+  - `Direct Texture (Canvas Overlay)`
+  - `No Present`
 - `D` — cycle `debug_view`
   - `Composite`
   - `GS Alpha`
@@ -33,15 +35,17 @@ Run the small matrix in this order so logs and behavior stay easy to compare:
 
 1. Baseline: effect enabled, `display_mode=Compositor`, `debug_view=Composite`, `ignore_scene_depth_in_composite=false`
 2. Effect disabled baseline
-3. `display_mode=Direct Texture`
-4. Back to `display_mode=Compositor`, then cycle `debug_view` through:
+3. `display_mode=Direct Texture (World Overlay)`
+4. `display_mode=Direct Texture (Canvas Overlay)`
+5. `display_mode=No Present`
+6. Back to `display_mode=Compositor`, then cycle `debug_view` through:
    - `GS Alpha`
    - `GS Color`
    - `GS Depth`
    - `Scene Depth`
    - `Depth Reject Mask`
    - `Composite`
-5. With `debug_view=Composite`, toggle `ignore_scene_depth_in_composite=true`
+7. With `debug_view=Composite`, toggle `ignore_scene_depth_in_composite=true`
 
 ## Logging added
 
@@ -51,6 +55,7 @@ The compositor path now logs once per run to prove:
 - whether the compositor callback was entered
 - whether the render manager was found
 - whether `render_for_compositor()` returned valid textures
+- whether `No Present` captured valid textures while skipping all writeback/presentation work
 - whether a compositor dispatch was about to run
 
 The renderer also logs once when it prepares compositor render targets.

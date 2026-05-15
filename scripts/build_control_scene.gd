@@ -81,7 +81,7 @@ func _initialize() -> void:
 	info.bbcode_enabled = true
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info.text = "[b]GDGS render-path tweak harness[/b]\nSample: res://samples/assets/demo.compressed.ply\n\nControls\n- [b]C[/b]: toggle compositor effect enabled\n- [b]M[/b]: cycle display_mode\n- [b]D[/b]: cycle debug_view\n- [b]I[/b]: toggle ignore_scene_depth_in_composite"
+	info.text = "[b]GDGS render-path tweak harness[/b]\nSample: res://samples/assets/demo.compressed.ply\n\nControls\n- [b]C[/b]: toggle compositor effect enabled\n- [b]M[/b]: cycle display_mode\n- [b]D[/b]: cycle debug_view\n- [b]I[/b]: toggle ignore_scene_depth_in_composite\n\nDisplay modes\n- Compositor\n- Direct Texture (World Overlay)\n- Direct Texture (Canvas Overlay)\n- No Present"
 	margin.add_child(info)
 	info.owner = root
 

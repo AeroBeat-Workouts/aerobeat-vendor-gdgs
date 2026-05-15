@@ -2,7 +2,9 @@ extends Node3D
 
 const DISPLAY_MODE_NAMES := [
 	"Compositor",
-	"Direct Texture"
+	"Direct Texture (World Overlay)",
+	"Direct Texture (Canvas Overlay)",
+	"No Present"
 ]
 
 const DEBUG_VIEW_NAMES := [
@@ -19,7 +21,7 @@ const DEBUG_VIEW_NAMES := [
 
 func _ready() -> void:
 	_update_hud()
-	print("[gdgs-harness] Controls: C toggle compositor effect, M cycle display mode, D cycle debug view, I toggle composite depth bypass")
+	print("[gdgs-harness] Controls: C toggle compositor effect, M cycle display mode, D cycle debug view, I toggle composite depth bypass (including World Overlay, Canvas Overlay, and No Present experiments)")
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey):
@@ -74,7 +76,7 @@ func _update_hud() -> void:
 		_hud_label.text = "[b]GDGS tweak matrix harness[/b]\nCompositor effect not found."
 		return
 
-	_hud_label.text = "[b]GDGS render-path tweak harness[/b]\nSample: res://samples/assets/demo.compressed.ply\n\nControls\n- [b]C[/b]: toggle compositor effect enabled\n- [b]M[/b]: cycle display_mode\n- [b]D[/b]: cycle debug_view\n- [b]I[/b]: toggle ignore_scene_depth_in_composite\n\nCurrent\n- effect enabled: %s\n- display_mode: %s\n- debug_view: %s\n- ignore scene depth in composite: %s" % [
+	_hud_label.text = "[b]GDGS render-path tweak harness[/b]\nSample: res://samples/assets/demo.compressed.ply\n\nControls\n- [b]C[/b]: toggle compositor effect enabled\n- [b]M[/b]: cycle display_mode\n- [b]D[/b]: cycle debug_view\n- [b]I[/b]: toggle ignore_scene_depth_in_composite\n\nDisplay modes\n- Compositor\n- Direct Texture (World Overlay)\n- Direct Texture (Canvas Overlay)\n- No Present\n\nCurrent\n- effect enabled: %s\n- display_mode: %s\n- debug_view: %s\n- ignore scene depth in composite: %s" % [
 		str(effect.enabled),
 		_display_mode_name(int(effect.display_mode)),
 		_debug_view_name(int(effect.debug_view)),

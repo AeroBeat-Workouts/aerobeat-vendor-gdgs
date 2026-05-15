@@ -5,12 +5,16 @@ extends CompositorEffect
 const WORKGROUP_SIZE := 16
 const MANAGER_SCRIPT := preload("res://addons/gdgs/runtime/render/gaussian_render_manager.gd")
 const DIRECT_TEXTURE_SHADER := preload("res://addons/gdgs/runtime/debug/shaders/direct_texture_overlay.gdshader")
-const DIRECT_TEXTURE_OVERLAY_NAME := "_GdgsDirectTextureOverlay"
+const DIRECT_TEXTURE_WORLD_OVERLAY_NAME := "_GdgsDirectTextureWorldOverlay"
+const DIRECT_TEXTURE_CANVAS_LAYER_NAME := "_GdgsDirectTextureCanvasLayer"
+const DIRECT_TEXTURE_CANVAS_RECT_NAME := "_GdgsDirectTextureCanvasRect"
 const DEFAULT_TEXTURE_USAGE_BITS := 0x18B
 
 enum DisplayMode {
 	COMPOSITOR,
-	DIRECT_TEXTURE
+	DIRECT_TEXTURE_WORLD,
+	DIRECT_TEXTURE_CANVAS,
+	NO_PRESENT
 }
 
 enum DebugView {
@@ -26,11 +30,11 @@ enum DebugView {
 @export_range(0.0, 1.0, 0.001) var depth_bias := 0.05
 @export_range(0.0, 1.0, 0.001) var depth_test_min_alpha := 0.05
 @export_range(0.0, 1.0, 0.001) var depth_capture_alpha = 0.5
-@export_enum("Compositor", "Direct Texture") var display_mode: int:
+@export_enum("Compositor", "Direct Texture (World Overlay)", "Direct Texture (Canvas Overlay)", "No Present") var display_mode: int:
 	set(value):
-		_display_mode = clampi(value, DisplayMode.COMPOSITOR, DisplayMode.DIRECT_TEXTURE)
-		if _display_mode != DisplayMode.DIRECT_TEXTURE:
-			_queue_direct_texture_overlay_state(false, RID())
+		_display_mode = clampi(value, DisplayMode.COMPOSITOR, DisplayMode.NO_PRESENT)
+		if not _display_mode_uses_overlay(_display_mode):
+			_queue_direct_texture_presentation(DisplayMode.COMPOSITOR, RID())
 	get:
 		return _display_mode
 @export_enum("Composite", "GS Alpha", "GS Color", "GS Depth", "Scene Depth", "Depth Reject Mask") var debug_view: int = DebugView.COMPOSITE
@@ -47,7 +51,7 @@ var _direct_texture_resource: Texture2DRD
 var _overlay_mutex := Mutex.new()
 var _once_logs := {}
 var _overlay_sync_queued := false
-var _overlay_pending_visible := false
+var _overlay_pending_mode := DisplayMode.COMPOSITOR
 var _overlay_pending_texture_rid := RID()
 
 func _init() -> void:
@@ -61,7 +65,7 @@ func _notification(what: int) -> void:
 
 	_overlay_mutex.lock()
 	_overlay_sync_queued = false
-	_overlay_pending_visible = false
+	_overlay_pending_mode = DisplayMode.COMPOSITOR
 	_overlay_pending_texture_rid = RID()
 	_overlay_mutex.unlock()
 
@@ -73,9 +77,12 @@ func _notification(what: int) -> void:
 	if main_loop is SceneTree:
 		var tree: SceneTree = main_loop
 		if tree.root != null:
-			var overlay := tree.root.get_node_or_null(DIRECT_TEXTURE_OVERLAY_NAME) as MeshInstance3D
-			if overlay != null:
-				overlay.queue_free()
+			var world_overlay := tree.root.get_node_or_null(DIRECT_TEXTURE_WORLD_OVERLAY_NAME) as MeshInstance3D
+			if world_overlay != null:
+				world_overlay.queue_free()
+			var canvas_layer := tree.root.get_node_or_null(DIRECT_TEXTURE_CANVAS_LAYER_NAME) as CanvasLayer
+			if canvas_layer != null:
+				canvas_layer.queue_free()
 
 	if rd != null:
 		if fallback_depth_texture.is_valid():
@@ -92,45 +99,47 @@ func _notification(what: int) -> void:
 	depth_sampler = RID()
 
 func _render_callback(_effect_callback_type: int, render_data: RenderData) -> void:
-	var is_direct_texture_mode := display_mode == DisplayMode.DIRECT_TEXTURE
+	var current_display_mode := int(display_mode)
+	var uses_overlay := _display_mode_uses_overlay(current_display_mode)
+	var is_no_present_mode := current_display_mode == DisplayMode.NO_PRESENT
 	_log_once(
 		"mode_summary",
 		"[gdgs] compositor mode=%s debug_view=%s ignore_scene_depth_in_composite=%s enabled=%s" % [
-			_display_mode_name(display_mode),
+			_display_mode_name(current_display_mode),
 			_debug_view_name(debug_view),
 			str(ignore_scene_depth_in_composite),
 			str(enabled)
 		]
 	)
 	_log_once("render_callback_entered", "[gdgs] compositor render callback entered")
-	if not is_direct_texture_mode and (not rd or not shader.is_valid() or not pipeline.is_valid()):
-		_queue_direct_texture_overlay_state(false, RID())
+	if not (uses_overlay or is_no_present_mode) and (not rd or not shader.is_valid() or not pipeline.is_valid()):
+		_queue_direct_texture_presentation(DisplayMode.COMPOSITOR, RID())
 		return
 
 	var scene_buffers: RenderSceneBuffersRD = render_data.get_render_scene_buffers()
 	var scene_data: RenderSceneDataRD = render_data.get_render_scene_data()
 	if scene_buffers == null or scene_data == null:
-		_queue_direct_texture_overlay_state(false, RID())
+		_queue_direct_texture_presentation(DisplayMode.COMPOSITOR, RID())
 		return
 
 	var manager = MANAGER_SCRIPT.get_instance()
 	_log_once("manager_lookup", "[gdgs] compositor manager lookup result=%s" % ("found" if manager != null else "missing"))
 	if manager == null:
-		_queue_direct_texture_overlay_state(false, RID())
+		_queue_direct_texture_presentation(DisplayMode.COMPOSITOR, RID())
 		return
 
 	var size: Vector2i = scene_buffers.get_internal_size()
 	if size.x <= 0 or size.y <= 0:
-		_queue_direct_texture_overlay_state(false, RID())
+		_queue_direct_texture_presentation(DisplayMode.COMPOSITOR, RID())
 		return
 
 	var x_groups: int = 0
 	var y_groups: int = 0
-	if not is_direct_texture_mode:
+	if not (uses_overlay or is_no_present_mode):
 		x_groups = int(ceili(size.x / float(WORKGROUP_SIZE)))
 		y_groups = int(ceili(size.y / float(WORKGROUP_SIZE)))
 
-	var direct_texture_visible := false
+	var direct_texture_presented := false
 	for view in scene_buffers.get_view_count():
 		var camera_data := _get_camera_data(scene_data, view)
 		if camera_data.is_empty():
@@ -159,9 +168,13 @@ func _render_callback(_effect_callback_type: int, render_data: RenderData) -> vo
 		if not gsplat_texture.is_valid() or not gsplat_depth_texture.is_valid():
 			continue
 
-		if is_direct_texture_mode:
-			_queue_direct_texture_overlay_state(true, gsplat_texture)
-			direct_texture_visible = true
+		if uses_overlay:
+			_queue_direct_texture_presentation(current_display_mode, gsplat_texture)
+			direct_texture_presented = true
+			break
+
+		if is_no_present_mode:
+			_log_once("no_present", "[gdgs] no-present mode captured valid compositor textures and skipped all writeback/presentation work")
 			break
 
 		var scene_tex: RID = scene_buffers.get_color_layer(view)
@@ -220,7 +233,7 @@ func _render_callback(_effect_callback_type: int, render_data: RenderData) -> vo
 		_log_once(
 			"dispatch",
 			"[gdgs] compositor dispatch pending display_mode=%s debug_view=%s use_scene_depth=%s size=%s" % [
-				_display_mode_name(display_mode),
+				_display_mode_name(current_display_mode),
 				_debug_view_name(debug_view),
 				str(use_scene_depth),
 				str(size)
@@ -237,10 +250,10 @@ func _render_callback(_effect_callback_type: int, render_data: RenderData) -> vo
 		rd.compute_list_dispatch(compute_list, x_groups, y_groups, 1)
 		rd.compute_list_end()
 
-	if is_direct_texture_mode and not direct_texture_visible:
-		_queue_direct_texture_overlay_state(false, RID())
-	elif not is_direct_texture_mode:
-		_queue_direct_texture_overlay_state(false, RID())
+	if uses_overlay and not direct_texture_presented:
+		_queue_direct_texture_presentation(DisplayMode.COMPOSITOR, RID())
+	elif not uses_overlay:
+		_queue_direct_texture_presentation(DisplayMode.COMPOSITOR, RID())
 
 func _get_camera_data(scene_data: RenderSceneDataRD, view: int) -> Dictionary:
 	if scene_data == null:
@@ -297,10 +310,17 @@ func _display_mode_name(value: int) -> String:
 	match value:
 		DisplayMode.COMPOSITOR:
 			return "Compositor"
-		DisplayMode.DIRECT_TEXTURE:
-			return "Direct Texture"
+		DisplayMode.DIRECT_TEXTURE_WORLD:
+			return "Direct Texture (World Overlay)"
+		DisplayMode.DIRECT_TEXTURE_CANVAS:
+			return "Direct Texture (Canvas Overlay)"
+		DisplayMode.NO_PRESENT:
+			return "No Present"
 		_:
 			return "Unknown(%d)" % value
+
+func _display_mode_uses_overlay(value: int) -> bool:
+	return value == DisplayMode.DIRECT_TEXTURE_WORLD or value == DisplayMode.DIRECT_TEXTURE_CANVAS
 
 func _debug_view_name(value: int) -> String:
 	match value:
@@ -350,13 +370,13 @@ func _create_fallback_depth_texture() -> RID:
 		[PackedFloat32Array([1.0]).to_byte_array()]
 	)
 
-func _queue_direct_texture_overlay_state(visible: bool, texture_rid: RID) -> void:
-	var next_visible := visible and texture_rid.is_valid()
-	var next_texture_rid := texture_rid if next_visible else RID()
+func _queue_direct_texture_presentation(mode: int, texture_rid: RID) -> void:
+	var next_mode := mode if _display_mode_uses_overlay(mode) and texture_rid.is_valid() else DisplayMode.COMPOSITOR
+	var next_texture_rid := texture_rid if next_mode != DisplayMode.COMPOSITOR else RID()
 
 	_overlay_mutex.lock()
-	var state_changed := _overlay_pending_visible != next_visible or _overlay_pending_texture_rid != next_texture_rid
-	_overlay_pending_visible = next_visible
+	var state_changed := _overlay_pending_mode != next_mode or _overlay_pending_texture_rid != next_texture_rid
+	_overlay_pending_mode = next_mode
 	_overlay_pending_texture_rid = next_texture_rid
 	var should_queue := state_changed and not _overlay_sync_queued
 	if should_queue:
@@ -364,33 +384,39 @@ func _queue_direct_texture_overlay_state(visible: bool, texture_rid: RID) -> voi
 	_overlay_mutex.unlock()
 
 	if should_queue:
-		call_deferred("_sync_direct_texture_overlay")
+		call_deferred("_sync_direct_texture_presentation")
 
-func _sync_direct_texture_overlay() -> void:
-	var pending_visible := false
+func _sync_direct_texture_presentation() -> void:
+	var pending_mode := DisplayMode.COMPOSITOR
 	var pending_texture_rid := RID()
 
 	_overlay_mutex.lock()
-	pending_visible = _overlay_pending_visible
+	pending_mode = _overlay_pending_mode
 	pending_texture_rid = _overlay_pending_texture_rid
 	_overlay_sync_queued = false
 	_overlay_mutex.unlock()
 
-	var overlay := _ensure_direct_texture_overlay() if pending_visible else _get_direct_texture_overlay()
-	if overlay == null:
-		return
-
 	var texture := _ensure_direct_texture_resource()
 	if texture == null:
 		return
+	texture.texture_rd_rid = pending_texture_rid if _display_mode_uses_overlay(pending_mode) else RID()
 
-	texture.texture_rd_rid = pending_texture_rid if pending_visible else RID()
-	overlay.visible = pending_visible and pending_texture_rid.is_valid()
+	var world_overlay := _get_direct_texture_world_overlay()
+	if pending_mode == DisplayMode.DIRECT_TEXTURE_WORLD:
+		world_overlay = _ensure_direct_texture_world_overlay()
+	if world_overlay != null:
+		world_overlay.visible = pending_mode == DisplayMode.DIRECT_TEXTURE_WORLD and pending_texture_rid.is_valid()
 
-func _ensure_direct_texture_overlay() -> MeshInstance3D:
-	var overlay := _get_direct_texture_overlay()
+	var canvas_rect := _get_direct_texture_canvas_rect()
+	if pending_mode == DisplayMode.DIRECT_TEXTURE_CANVAS:
+		canvas_rect = _ensure_direct_texture_canvas_rect()
+	if canvas_rect != null:
+		canvas_rect.visible = pending_mode == DisplayMode.DIRECT_TEXTURE_CANVAS and pending_texture_rid.is_valid()
+
+func _ensure_direct_texture_world_overlay() -> MeshInstance3D:
+	var overlay := _get_direct_texture_world_overlay()
 	if overlay != null:
-		_configure_direct_texture_overlay(overlay)
+		_configure_direct_texture_world_overlay(overlay)
 		return overlay
 
 	var tree := _get_scene_tree()
@@ -398,13 +424,13 @@ func _ensure_direct_texture_overlay() -> MeshInstance3D:
 		return null
 
 	overlay = MeshInstance3D.new()
-	overlay.name = DIRECT_TEXTURE_OVERLAY_NAME
+	overlay.name = DIRECT_TEXTURE_WORLD_OVERLAY_NAME
 	overlay.visible = false
 	tree.root.add_child(overlay)
-	_configure_direct_texture_overlay(overlay)
+	_configure_direct_texture_world_overlay(overlay)
 	return overlay
 
-func _configure_direct_texture_overlay(overlay: MeshInstance3D) -> void:
+func _configure_direct_texture_world_overlay(overlay: MeshInstance3D) -> void:
 	if overlay == null:
 		return
 
@@ -432,20 +458,79 @@ func _ensure_direct_texture_resource() -> Texture2DRD:
 		_direct_texture_resource = Texture2DRD.new()
 	return _direct_texture_resource
 
-func _get_direct_texture_overlay() -> MeshInstance3D:
+func _ensure_direct_texture_canvas_layer() -> CanvasLayer:
+	var layer := _get_direct_texture_canvas_layer()
+	if layer != null:
+		return layer
+
 	var tree := _get_scene_tree()
 	if tree == null or tree.root == null:
 		return null
-	return tree.root.get_node_or_null(DIRECT_TEXTURE_OVERLAY_NAME) as MeshInstance3D
+
+	layer = CanvasLayer.new()
+	layer.name = DIRECT_TEXTURE_CANVAS_LAYER_NAME
+	tree.root.add_child(layer)
+	return layer
+
+func _ensure_direct_texture_canvas_rect() -> TextureRect:
+	var rect := _get_direct_texture_canvas_rect()
+	if rect != null:
+		_configure_direct_texture_canvas_rect(rect)
+		return rect
+
+	var layer := _ensure_direct_texture_canvas_layer()
+	if layer == null:
+		return null
+
+	rect = TextureRect.new()
+	rect.name = DIRECT_TEXTURE_CANVAS_RECT_NAME
+	layer.add_child(rect)
+	_configure_direct_texture_canvas_rect(rect)
+	return rect
+
+func _configure_direct_texture_canvas_rect(rect: TextureRect) -> void:
+	if rect == null:
+		return
+	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rect.offset_left = 0.0
+	rect.offset_top = 0.0
+	rect.offset_right = 0.0
+	rect.offset_bottom = 0.0
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_SCALE
+	rect.texture = _ensure_direct_texture_resource()
+
+func _get_direct_texture_world_overlay() -> MeshInstance3D:
+	var tree := _get_scene_tree()
+	if tree == null or tree.root == null:
+		return null
+	return tree.root.get_node_or_null(DIRECT_TEXTURE_WORLD_OVERLAY_NAME) as MeshInstance3D
+
+func _get_direct_texture_canvas_layer() -> CanvasLayer:
+	var tree := _get_scene_tree()
+	if tree == null or tree.root == null:
+		return null
+	return tree.root.get_node_or_null(DIRECT_TEXTURE_CANVAS_LAYER_NAME) as CanvasLayer
+
+func _get_direct_texture_canvas_rect() -> TextureRect:
+	var layer := _get_direct_texture_canvas_layer()
+	if layer == null:
+		return null
+	return layer.get_node_or_null(DIRECT_TEXTURE_CANVAS_RECT_NAME) as TextureRect
 
 func _free_direct_texture_overlay() -> void:
 	if _direct_texture_resource != null:
 		_direct_texture_resource.texture_rd_rid = RID()
 		_direct_texture_resource = null
 
-	var overlay := _get_direct_texture_overlay()
-	if overlay != null:
-		overlay.queue_free()
+	var world_overlay := _get_direct_texture_world_overlay()
+	if world_overlay != null:
+		world_overlay.queue_free()
+
+	var canvas_layer := _get_direct_texture_canvas_layer()
+	if canvas_layer != null:
+		canvas_layer.queue_free()
 
 func _get_scene_tree() -> SceneTree:
 	var main_loop := Engine.get_main_loop()

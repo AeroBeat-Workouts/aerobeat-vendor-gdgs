@@ -2,7 +2,8 @@
 extends EditorPlugin
 
 const MANAGER_NODE_NAME := "_GdgsGaussianRenderManager"
-const DIRECT_TEXTURE_OVERLAY_NAME := "_GdgsDirectTextureOverlay"
+const DIRECT_TEXTURE_WORLD_OVERLAY_NAME := "_GdgsDirectTextureWorldOverlay"
+const DIRECT_TEXTURE_CANVAS_LAYER_NAME := "_GdgsDirectTextureCanvasLayer"
 
 var import_plugin: EditorImportPlugin
 var gizmo_plugin: EditorNode3DGizmoPlugin
@@ -30,8 +31,12 @@ func _exit_tree() -> void:
 				manager.shutdown()
 			manager.queue_free()
 
-		var direct_texture_overlay := tree.root.get_node_or_null(DIRECT_TEXTURE_OVERLAY_NAME)
-		if direct_texture_overlay != null:
-			direct_texture_overlay.queue_free()
+		var direct_texture_world_overlay := tree.root.get_node_or_null(DIRECT_TEXTURE_WORLD_OVERLAY_NAME)
+		if direct_texture_world_overlay != null:
+			direct_texture_world_overlay.queue_free()
+
+		var direct_texture_canvas_layer := tree.root.get_node_or_null(DIRECT_TEXTURE_CANVAS_LAYER_NAME)
+		if direct_texture_canvas_layer != null:
+			direct_texture_canvas_layer.queue_free()
 
 	print("[gdgs] disable gaussian splatting plugin")
