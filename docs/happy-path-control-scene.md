@@ -28,6 +28,10 @@ If you want Godot to rebuild the scene file from the vendored plugin + imported 
 ~/.local/bin/godot --headless --path . --script res://scripts/build_control_scene.gd
 ```
 
+## Render-path tweak harness
+
+The main scene now also includes a tiny live toggle harness for QA. See `res://docs/render-path-tweak-matrix.md` for the key bindings, intended matrix order, and logging points.
+
 ## QA run
 
 Import once, then run the main scene:

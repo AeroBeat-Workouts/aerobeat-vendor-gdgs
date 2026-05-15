@@ -8,6 +8,7 @@ const SAMPLE_ASSET_PATHS := [
 ]
 const COMPOSITOR_EFFECT_SCRIPT_PATH := "res://addons/gdgs/runtime/compositor/gaussian_compositor_effect.gd"
 const GAUSSIAN_SPLAT_NODE_SCRIPT_PATH := "res://addons/gdgs/runtime/nodes/gaussian_splat_node.gd"
+const HARNESS_SCRIPT_PATH := "res://scripts/gdgs_tweak_matrix_harness.gd"
 
 func _initialize() -> void:
 	var sample := _load_sample_resource()
@@ -18,6 +19,7 @@ func _initialize() -> void:
 
 	var root := Node3D.new()
 	root.name = "GdgsHappyPathControl"
+	root.set_script(load(HARNESS_SCRIPT_PATH))
 
 	var gaussian_splat_node_script := load(GAUSSIAN_SPLAT_NODE_SCRIPT_PATH)
 	if gaussian_splat_node_script == null:
@@ -79,7 +81,7 @@ func _initialize() -> void:
 	info.bbcode_enabled = true
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info.text = "[b]GDGS vendor happy-path control[/b]\nSample: res://samples/assets/demo.compressed.ply\nREADME shape: GaussianSplatNode + WorldEnvironment + Compositor + gdgs CompositorEffect\nRenderer requirement: Forward Plus + desktop GPU compute support."
+	info.text = "[b]GDGS render-path tweak harness[/b]\nSample: res://samples/assets/demo.compressed.ply\n\nControls\n- [b]C[/b]: toggle compositor effect enabled\n- [b]M[/b]: cycle display_mode\n- [b]D[/b]: cycle debug_view\n- [b]I[/b]: toggle ignore_scene_depth_in_composite"
 	margin.add_child(info)
 	info.owner = root
 

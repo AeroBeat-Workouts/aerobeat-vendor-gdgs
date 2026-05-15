@@ -6,6 +6,8 @@ const RenderingDeviceContext := preload("res://addons/gdgs/runtime/render/gaussi
 const RADIX := 256
 const MAX_SORT_ELEMENTS_PER_SPLAT := 10
 
+var _once_logs := {}
+
 func render_for_compositor(
 	state_cache: GaussianGpuStateCache,
 	scene_registry: GaussianSceneRegistry,
@@ -46,9 +48,20 @@ func render_for_compositor(
 
 	_rasterize_state(state, point_count)
 	if state.descriptors.has("render_texture") and state.descriptors.has("depth_texture"):
+		var color_texture: RID = state.descriptors["render_texture"].rid
+		var depth_texture: RID = state.descriptors["depth_texture"].rid
+		_log_once(
+			"render_targets_ready",
+			"[gdgs] renderer prepared compositor textures color_valid=%s depth_valid=%s texture_size=%s point_count=%d" % [
+				str(color_texture.is_valid()),
+				str(depth_texture.is_valid()),
+				str(state.texture_size),
+				point_count
+			]
+		)
 		return {
-			"color_alpha_texture": state.descriptors["render_texture"].rid,
-			"depth_texture": state.descriptors["depth_texture"].rid
+			"color_alpha_texture": color_texture,
+			"depth_texture": depth_texture
 		}
 	return {}
 
@@ -114,3 +127,9 @@ func _projection_to_column_major_floats(matrix: Projection) -> Array:
 		matrix.z[0], matrix.z[1], matrix.z[2], matrix.z[3],
 		matrix.w[0], matrix.w[1], matrix.w[2], matrix.w[3]
 	]
+
+func _log_once(key: String, message: String) -> void:
+	if _once_logs.get(key, false):
+		return
+	_once_logs[key] = true
+	print(message)

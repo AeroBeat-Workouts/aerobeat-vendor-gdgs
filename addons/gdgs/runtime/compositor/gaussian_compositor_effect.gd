@@ -34,6 +34,7 @@ enum DebugView {
 	get:
 		return _display_mode
 @export_enum("Composite", "GS Alpha", "GS Color", "GS Depth", "Scene Depth", "Depth Reject Mask") var debug_view: int = DebugView.COMPOSITE
+@export var ignore_scene_depth_in_composite := false
 
 var rd: RenderingDevice
 var shader: RID
@@ -44,6 +45,7 @@ var fallback_depth_texture: RID
 var _display_mode := DisplayMode.COMPOSITOR
 var _direct_texture_resource: Texture2DRD
 var _overlay_mutex := Mutex.new()
+var _once_logs := {}
 var _overlay_sync_queued := false
 var _overlay_pending_visible := false
 var _overlay_pending_texture_rid := RID()
@@ -91,6 +93,16 @@ func _notification(what: int) -> void:
 
 func _render_callback(_effect_callback_type: int, render_data: RenderData) -> void:
 	var is_direct_texture_mode := display_mode == DisplayMode.DIRECT_TEXTURE
+	_log_once(
+		"mode_summary",
+		"[gdgs] compositor mode=%s debug_view=%s ignore_scene_depth_in_composite=%s enabled=%s" % [
+			_display_mode_name(display_mode),
+			_debug_view_name(debug_view),
+			str(ignore_scene_depth_in_composite),
+			str(enabled)
+		]
+	)
+	_log_once("render_callback_entered", "[gdgs] compositor render callback entered")
 	if not is_direct_texture_mode and (not rd or not shader.is_valid() or not pipeline.is_valid()):
 		_queue_direct_texture_overlay_state(false, RID())
 		return
@@ -102,6 +114,7 @@ func _render_callback(_effect_callback_type: int, render_data: RenderData) -> vo
 		return
 
 	var manager = MANAGER_SCRIPT.get_instance()
+	_log_once("manager_lookup", "[gdgs] compositor manager lookup result=%s" % ("found" if manager != null else "missing"))
 	if manager == null:
 		_queue_direct_texture_overlay_state(false, RID())
 		return
@@ -131,10 +144,18 @@ func _render_callback(_effect_callback_type: int, render_data: RenderData) -> vo
 			_get_depth_capture_alpha()
 		)
 		if gsplat_result.is_empty():
+			_log_once("render_result_empty", "[gdgs] render_for_compositor() returned an empty result")
 			continue
 
 		var gsplat_texture: RID = gsplat_result.get("color_alpha_texture", RID())
 		var gsplat_depth_texture: RID = gsplat_result.get("depth_texture", RID())
+		_log_once(
+			"render_result_validity",
+			"[gdgs] render_for_compositor() textures color_valid=%s depth_valid=%s" % [
+				str(gsplat_texture.is_valid()),
+				str(gsplat_depth_texture.is_valid())
+			]
+		)
 		if not gsplat_texture.is_valid() or not gsplat_depth_texture.is_valid():
 			continue
 
@@ -148,6 +169,8 @@ func _render_callback(_effect_callback_type: int, render_data: RenderData) -> vo
 			continue
 
 		var use_scene_depth := _debug_view_needs_scene_depth(debug_view)
+		if ignore_scene_depth_in_composite and debug_view == DebugView.COMPOSITE:
+			use_scene_depth = false
 		var scene_depth_tex: RID = _get_scene_depth_texture(scene_buffers, view)
 		if use_scene_depth and not scene_depth_tex.is_valid():
 			continue
@@ -194,6 +217,15 @@ func _render_callback(_effect_callback_type: int, render_data: RenderData) -> vo
 			gsplat_depth_uniform,
 			scene_depth_uniform
 		])
+		_log_once(
+			"dispatch",
+			"[gdgs] compositor dispatch pending display_mode=%s debug_view=%s use_scene_depth=%s size=%s" % [
+				_display_mode_name(display_mode),
+				_debug_view_name(debug_view),
+				str(use_scene_depth),
+				str(size)
+			]
+		)
 		var compute_list: int = rd.compute_list_begin()
 		rd.compute_list_bind_compute_pipeline(compute_list, pipeline)
 		rd.compute_list_bind_uniform_set(compute_list, uniform_set, 0)
@@ -254,6 +286,38 @@ func _get_depth_capture_alpha() -> float:
 
 func _debug_view_needs_scene_depth(view: int) -> bool:
 	return view == DebugView.COMPOSITE or view == DebugView.SCENE_DEPTH or view == DebugView.DEPTH_REJECT_MASK
+
+func _log_once(key: String, message: String) -> void:
+	if _once_logs.get(key, false):
+		return
+	_once_logs[key] = true
+	print(message)
+
+func _display_mode_name(value: int) -> String:
+	match value:
+		DisplayMode.COMPOSITOR:
+			return "Compositor"
+		DisplayMode.DIRECT_TEXTURE:
+			return "Direct Texture"
+		_:
+			return "Unknown(%d)" % value
+
+func _debug_view_name(value: int) -> String:
+	match value:
+		DebugView.COMPOSITE:
+			return "Composite"
+		DebugView.GS_ALPHA:
+			return "GS Alpha"
+		DebugView.GS_COLOR:
+			return "GS Color"
+		DebugView.GS_DEPTH:
+			return "GS Depth"
+		DebugView.SCENE_DEPTH:
+			return "Scene Depth"
+		DebugView.DEPTH_REJECT_MASK:
+			return "Depth Reject Mask"
+		_:
+			return "Unknown(%d)" % value
 
 func initialize_compute_shader() -> void:
 	rd = RenderingServer.get_rendering_device()
