@@ -90,15 +90,16 @@ Execution should stay branch-based. We want a clean experimental branch for the 
 
 **Folders Created/Deleted/Modified:**
 - `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/`
-- possibly another owning dependency repo if identified
 
 **Files Created/Deleted/Modified:**
-- targeted source files in the actual owning codebase
-- docs/notes as needed
+- `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/addons/gdgs/runtime/render/gaussian_gpu_state_cache.gd`
+- `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/addons/gdgs/runtime/render/gaussian_renderer.gd`
+- `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/docs/gdgs-direct-dispatch-isolation.md`
+- `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/.plans/2026-05-16-gdgs-source-level-blit-pass-investigation.md`
 
-**Status:** ⏳ Pending
+**Status:** ✅ Complete
 
-**Results:** Pending.
+**Results:** Claimed `oc-92a` on `research/oc-0o7-gdgs-ownership-map` and chose the narrowest high-signal vendor-side isolation patch inside `REF-07`'s render lane rather than escalating immediately below GDGS. What actually changed: the radix-sort upsweep/downsweep passes and tile-boundary pass no longer use `compute_list_dispatch_indirect()` from the legacy `grid_dimensions` buffer. Instead, `gaussian_gpu_state_cache.gd` now bakes the same CPU-known worst-case workgroup counts directly into those pipelines (`num_partitions` for radix, `ceil(num_sort_elements_max / 256.0)` for boundaries), and `gaussian_renderer.gd` calls those pipelines with direct dispatch only. The `grid_dimensions` buffer remains allocated/bound for descriptor stability, but its `STORAGE_BUFFER_USAGE_DISPATCH_INDIRECT` flag was removed because it is no longer used as an indirect-dispatch source. This keeps the patch tight, reversible, and explicitly targeted at the strongest remaining vendor suspect from `REF-02`: indirect-dispatch / resource-usage sequencing in the renderer compute chain, not the compositor shader. Added durable notes in `docs/gdgs-direct-dispatch-isolation.md`, including the new QA log marker `[gdgs] renderer using direct dispatch isolation for radix/boundary passes`. Validation run: `~/.local/bin/godot --import --headless --path /home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs`, which completed successfully and re-registered the touched GDGS classes without script parse errors. This is best treated as a high-signal isolation pass, not yet a confirmed end-user fix; QA still needs to rerun the real-machine control-scene workflow from `REF-06` to determine whether the `BLIT_PASS` device-loss changes class or survives unchanged. References checked: `REF-02`, `REF-06`, `REF-07`.
 
 ---
 

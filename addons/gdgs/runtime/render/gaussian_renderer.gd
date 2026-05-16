@@ -83,6 +83,8 @@ func _rasterize_state(state, point_count: int) -> void:
 	state.context.device.buffer_clear(state.descriptors["histogram"].rid, 0, 4 + 4 * RADIX * 4)
 	state.context.device.buffer_clear(state.descriptors["tile_bounds"].rid, 0, state.tile_dims.x * state.tile_dims.y * 2 * 4)
 
+	_log_once("direct_dispatch_isolation", "[gdgs] renderer using direct dispatch isolation for radix/boundary passes")
+
 	var compute_list: int = state.context.compute_list_begin()
 	state.pipelines["gsplat_projection"].call(state.context, compute_list, state.camera_push_constants)
 	state.context.compute_list_end()
@@ -94,13 +96,13 @@ func _rasterize_state(state, point_count: int) -> void:
 			point_count * MAX_SORT_ELEMENTS_PER_SPLAT * (radix_shift_pass % 2),
 			point_count * MAX_SORT_ELEMENTS_PER_SPLAT * (1 - (radix_shift_pass % 2))
 		])
-		state.pipelines["radix_sort_upsweep"].call(state.context, compute_list, sort_push_constant, [], state.descriptors["grid_dimensions"].rid, 0)
+		state.pipelines["radix_sort_upsweep"].call(state.context, compute_list, sort_push_constant)
 		state.pipelines["radix_sort_spine"].call(state.context, compute_list, sort_push_constant)
-		state.pipelines["radix_sort_downsweep"].call(state.context, compute_list, sort_push_constant, [], state.descriptors["grid_dimensions"].rid, 0)
+		state.pipelines["radix_sort_downsweep"].call(state.context, compute_list, sort_push_constant)
 	state.context.compute_list_end()
 
 	compute_list = state.context.compute_list_begin()
-	state.pipelines["gsplat_boundaries"].call(state.context, compute_list, PackedByteArray(), [], state.descriptors["grid_dimensions"].rid, 3 * 4)
+	state.pipelines["gsplat_boundaries"].call(state.context, compute_list, PackedByteArray())
 	state.context.compute_list_end()
 
 	compute_list = state.context.compute_list_begin()

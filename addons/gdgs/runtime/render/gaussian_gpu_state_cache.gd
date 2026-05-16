@@ -93,17 +93,19 @@ func rebuild_gpu_state(state, point_count: int, unique_data_size: int, instance_
 
 	var num_sort_elements_max := point_count * MAX_SORT_ELEMENTS_PER_SPLAT
 	var num_partitions := (num_sort_elements_max + PARTITION_SIZE - 1) / PARTITION_SIZE
+	var max_boundary_workgroups := ceili(num_sort_elements_max / 256.0)
 	var block_dims := PackedInt32Array()
 	block_dims.resize(6)
 	block_dims.fill(1)
-	# Pre-size indirect dispatch dimensions on the CPU. On macOS/Metal, updating this
-	# buffer from the projection pass can cause the entire GS pipeline to go blank.
+	# Keep the legacy grid-dimensions buffer populated for shader compatibility, but
+	# use direct dispatch for the sort/boundary passes. This isolates the renderer from
+	# the dispatch-indirect path while preserving the existing worst-case work sizes.
 	block_dims[0] = num_partitions
-	block_dims[3] = ceili(num_sort_elements_max / 256.0)
+	block_dims[3] = max_boundary_workgroups
 
 	state.descriptors["splats"] = state.context.create_storage_buffer(unique_data_size)
 	state.descriptors["culled_splats"] = state.context.create_storage_buffer(point_count * FLOATS_PER_CULLED_SPLAT * BYTES_PER_FLOAT)
-	state.descriptors["grid_dimensions"] = state.context.create_storage_buffer(6 * 4, block_dims.to_byte_array(), RenderingDevice.STORAGE_BUFFER_USAGE_DISPATCH_INDIRECT)
+	state.descriptors["grid_dimensions"] = state.context.create_storage_buffer(6 * 4, block_dims.to_byte_array())
 	state.descriptors["histogram"] = state.context.create_storage_buffer(4 + (1 + 4 * RADIX + num_partitions * RADIX) * 4)
 	state.descriptors["sort_keys"] = state.context.create_storage_buffer(num_sort_elements_max * 4 * 2)
 	state.descriptors["sort_values"] = state.context.create_storage_buffer(num_sort_elements_max * 4 * 2)
@@ -158,10 +160,10 @@ func rebuild_gpu_state(state, point_count: int, unique_data_size: int, instance_
 	], state.shaders["render"], 0)
 
 	state.pipelines["gsplat_projection"] = state.context.create_pipeline([ceili(point_count / 256.0), 1, 1], [projection_set], state.shaders["projection"])
-	state.pipelines["radix_sort_upsweep"] = state.context.create_pipeline([], [radix_upsweep_set], state.shaders["radix_upsweep"])
+	state.pipelines["radix_sort_upsweep"] = state.context.create_pipeline([num_partitions, 1, 1], [radix_upsweep_set], state.shaders["radix_upsweep"])
 	state.pipelines["radix_sort_spine"] = state.context.create_pipeline([RADIX, 1, 1], [radix_spine_set], state.shaders["radix_spine"])
-	state.pipelines["radix_sort_downsweep"] = state.context.create_pipeline([], [radix_downsweep_set], state.shaders["radix_downsweep"])
-	state.pipelines["gsplat_boundaries"] = state.context.create_pipeline([], [boundaries_set], state.shaders["boundaries"])
+	state.pipelines["radix_sort_downsweep"] = state.context.create_pipeline([num_partitions, 1, 1], [radix_downsweep_set], state.shaders["radix_downsweep"])
+	state.pipelines["gsplat_boundaries"] = state.context.create_pipeline([max_boundary_workgroups, 1, 1], [boundaries_set], state.shaders["boundaries"])
 	state.pipelines["gsplat_render"] = state.context.create_pipeline([state.tile_dims.x, state.tile_dims.y, 1], [render_set], state.shaders["render"])
 
 	state.needs_gpu_rebuild = false
