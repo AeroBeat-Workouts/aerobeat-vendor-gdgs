@@ -141,3 +141,33 @@ Local validation for this implementation pass was a headless Godot import/regist
 - `~/.local/bin/godot --import --headless --path /home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs`
 
 That validation confirms the touched GDGS scripts still register cleanly; 4.7-dev5 runtime verification remains the next QA lane.
+
+## 4.7-dev5 QA result on 2026-05-16
+
+Real-machine QA was rerun on the same Surface Pro 8 Wayland / Vulkan path using the existing control-scene repro harness and the same Godot 4.7-dev5 binary previously captured in `REF-04`'s artifact bundle.
+
+Artifact folder:
+- `/home/derrick/.openclaw/workspace/.temp/gdgs-push-constant-fix-qa-2026-05-16-dev5/`
+
+What changed versus the prior 4.7-dev5 baseline:
+- the repeated radix `compute_list_set_push_constant()` validation errors are gone
+- the repeated follow-on `compute_list_dispatch()` missing-push-constant errors are gone
+
+What did not change:
+- case matrix stayed the same:
+  - `compositor` -> exit `134`
+  - `effect_disabled` -> exit `0`
+  - `direct_texture_world` -> exit `134`
+  - `direct_texture_canvas` -> exit `134`
+  - `no_present` -> exit `134`
+- enabled crashing modes still produce valid compositor textures before failure
+- `no_present` still logs that it captured valid compositor textures and skipped all writeback/presentation work
+- Godot still ends at `Last known breadcrumb: BLIT_PASS`
+- Godot still reports `Vulkan device was lost.`
+- visible rendering did not improve
+- stability did not improve
+
+QA conclusion:
+- this fix removes one confirmed GDGS push-constant contract violation on Godot 4.7-dev5
+- the later BLIT-pass / device-loss failure remains
+- the bug is therefore materially narrowed, but not resolved, and still points at either a later GDGS render-resource misuse or Godot/backend ownership beyond the removed push-constant mismatch

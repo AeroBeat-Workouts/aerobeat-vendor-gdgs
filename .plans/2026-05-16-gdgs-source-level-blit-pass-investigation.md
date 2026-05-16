@@ -116,11 +116,13 @@ Execution should stay branch-based. We want a clean experimental branch for the 
 - `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/`
 
 **Files Created/Deleted/Modified:**
-- new QA artifact folders/logs/images/summaries as needed
+- `/home/derrick/.openclaw/workspace/.temp/gdgs-direct-dispatch-qa-2026-05-16/`
+- `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/.plans/2026-05-16-gdgs-source-level-blit-pass-investigation.md`
+- `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/docs/gdgs-direct-dispatch-isolation.md`
 
-**Status:** ⏳ Pending
+**Status:** ✅ Complete
 
-**Results:** Pending.
+**Results:** QA reran the exact prior `REF-06` control-scene BLIT-pass case flow on the real Surface Pro 8 Wayland/Vulkan machine, but on branch `research/oc-0o7-gdgs-ownership-map` at commit `5797bd8bdb59a191915421a8728ce14f3ebed5ba`, with fresh artifacts captured under `/home/derrick/.openclaw/workspace/.temp/gdgs-direct-dispatch-qa-2026-05-16/`. The new direct-dispatch breadcrumb appeared in every enabled branch (`[gdgs] renderer using direct dispatch isolation for radix/boundary passes`), proving the isolation patch was truly active on the tested runtime path. Despite that, the failure class did not materially change: `compositor`, `direct_texture_world`, `direct_texture_canvas`, and `no_present` all still aborted with exit code `134`, still logged valid compositor textures, and still converged on `Last known breadcrumb: BLIT_PASS` followed by `Vulkan device was lost.` `effect_disabled` remained the only stable branch and still produced the same blank/background-only output as the prior baseline; its JSON metrics matched `REF-06` exactly. Visible rendering did not improve, stability did not improve, and the decisive `no_present` boundary survived unchanged even with the new direct-dispatch isolation active. This weakens the case that GDGS indirect-dispatch setup was the owner of the crash and shifts suspicion further toward either another GDGS render-resource misuse or Godot/Vulkan/backend ownership on this Intel Iris Xe / Wayland path. References checked: `REF-05`, `REF-06`, `REF-07`.
 
 ---
 
@@ -139,27 +141,30 @@ Execution should stay branch-based. We want a clean experimental branch for the 
 - `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/.plans/2026-05-16-gdgs-source-level-blit-pass-investigation.md`
 - supporting docs/notes as needed
 
-**Status:** ⏳ Pending
+**Status:** ✅ Complete
 
-**Results:** Pending.
+**Results:** Independent audit of the branch work, source trace, direct-dispatch isolation patch, and fresh `REF-06`-style QA artifacts found that the new isolation pass was real but not materially curative. The branch commit `5797bd8bdb59a191915421a8728ce14f3ebed5ba` cleanly removes GDGS indirect dispatch from the radix/boundary passes, and QA proved that path was active via the new breadcrumb (`[gdgs] renderer using direct dispatch isolation for radix/boundary passes`) in every crashing enabled mode. Despite that, `compositor`, `direct_texture_world`, `direct_texture_canvas`, and `no_present` still reproduced the same exit `134` / `Last known breadcrumb: BLIT_PASS` / `Vulkan device was lost.` boundary, while `effect_disabled` remained the only stable-but-blank baseline. The decisive audit call is that the direct-dispatch isolation pass did **not** materially change the failure class, so GDGS indirect-dispatch setup is no longer a strong owner candidate. That weakens the case for another hand-wavy vendor pass or an upstream GDGS PR based on the current patch. Best-supported next owner lane is now **Godot/backend escalation** with the existing GDGS upstream issue updated to include the negative isolation result and source-trace narrowing. A further vendor-side pass would only be justified if it is extremely narrow and specifically targets another concrete GDGS render-resource misuse hypothesis (for example, texture usage/format or resource-lifetime hazards), but the present evidence no longer makes that the default next move. References checked: `REF-01`, `REF-02`, `REF-05`, `REF-06`, `REF-07`.
 
 ---
 
 ## Final Results
 
-**Status:** ⚠️ Draft
+**Status:** ✅ Complete
 
-**What We Built:** Pending execution.
+**What We Built:** We completed a source-level ownership investigation on branch `research/oc-0o7-gdgs-ownership-map`, documented the vendor-vs-engine boundary, traced the live crash path into GDGS' compute renderer, landed one narrow vendor-side isolation patch that removes indirect dispatch from the radix/boundary passes, and reran the real-machine QA harness against that branch. The key outcome is not a user-facing fix but an ownership decision: the direct-dispatch isolation was active and still left the exact same `BLIT_PASS` / Vulkan device-loss failure class in place, including the decisive `no_present` branch that skips GDGS script-side presentation work.
 
-**Reference Check:** Pending.
+**Reference Check:** `REF-01` confirmed this repo is only the vendor lane. `REF-02`, `REF-05`, and `REF-07` supported the source-level ownership and trace work inside GDGS. `REF-06` and the new `/home/derrick/.openclaw/workspace/.temp/gdgs-direct-dispatch-qa-2026-05-16/` artifact set showed that the isolation patch did not materially change runtime behavior. Taken together, the evidence no longer strongly supports a GDGS PR from the current patch. It best supports a Godot/backend escalation lane, while updating the existing GDGS upstream issue with the new negative-isolation evidence.
 
 **Commits:**
-- Pending.
+- `3b94cc7` - `docs: map gdgs blit-pass ownership boundary`
+- `2cd6d27` - `docs: trace gdgs blit-pass failure path`
+- `5797bd8` - `Isolate GDGS render path from indirect dispatch`
 
 **Lessons Learned:**
-- Keep the vendor repo as the first concrete patch lane, but don’t confuse “where we can test quickly” with “what code actually owns the bug.”
-- Branch-based investigation is the safest shape for this slice because success may need to turn into an upstream PR or a dependency-fork handoff.
+- A narrow vendor-side isolation patch can still be valuable even when it fails, because a clean null result materially sharpens ownership.
+- The decisive question was whether removing GDGS indirect dispatch changed the failure class; it did not.
+- Unless a new, concrete GDGS misuse hypothesis appears, the next serious investigation should move below the vendor repo into Godot/backend territory rather than spending more cycles on broad plugin-side poking.
 
 ---
 
-*Completed on Pending*
+*Completed on 2026-05-16*

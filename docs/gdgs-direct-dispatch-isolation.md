@@ -57,3 +57,29 @@ Look for this log line during validation:
 ```
 
 That confirms the isolation path is active in the tested build.
+
+## Surface Pro 8 QA result
+
+Real-machine QA was rerun on 2026-05-16 on the actual Wayland / Vulkan Surface Pro 8 path using the same control-scene harness and case order as the prior `REF-06` baseline.
+
+Artifact folder:
+
+- `/home/derrick/.openclaw/workspace/.temp/gdgs-direct-dispatch-qa-2026-05-16/`
+
+Observed result:
+
+- the new breadcrumb **does appear** in every enabled branch:
+  - `[gdgs] renderer using direct dispatch isolation for radix/boundary passes`
+- runtime behavior did **not materially improve**
+- `compositor`, `direct_texture_world`, `direct_texture_canvas`, and `no_present` still abort with exit code `134`
+- `effect_disabled` is still the only stable branch, and it remains visually blank/background-only
+- `no_present` still logs valid compositor textures plus explicit skipped writeback/presentation work, yet the process still ends with:
+  - `Last known breadcrumb: BLIT_PASS`
+  - `Vulkan device was lost.`
+
+Conclusion:
+
+- the direct-dispatch isolation patch successfully proves the new path was active, but it does **not** change the BLIT-pass failure class on this machine/backend
+- visible rendering did not improve
+- stability did not improve
+- ownership suspicion shifts further away from GDGS' indirect-dispatch setup and further toward either another GDGS render-resource misuse or Godot/Vulkan/backend behavior on this Intel Iris Xe Wayland path

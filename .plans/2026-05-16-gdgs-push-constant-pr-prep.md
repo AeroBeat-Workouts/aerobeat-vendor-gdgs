@@ -69,11 +69,13 @@ This slice should stay disciplined: first verify repo rules and clean branch str
 - `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/`
 
 **Files Created/Deleted/Modified:**
-- targeted branch/commit state and any supporting PR notes as needed
+- `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs-upstream-pr/addons/gdgs/runtime/render/gaussian_renderer.gd`
+- `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs-upstream-pr/addons/gdgs/runtime/render/gaussian_rendering_device_context.gd`
+- `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/docs/upstream-pr-draft-issue-12-radix-push-constant-fix.md`
 
-**Status:** ⏳ Pending
+**Status:** ✅ Complete
 
-**Results:** Pending.
+**Results:** Claimed bead `oc-n9h` and followed the chosen clean-branch strategy without touching the already-dirty investigation branch. Created a separate git worktree at `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs-upstream-pr` on fresh branch `upstream/issue-12-radix-push-constant-fix` from local `main`, then replayed only the runtime-file hunks from fix commit `bc06934` by checking out just the two upstream-relevant files. The resulting branch diff is surgically limited to `addons/gdgs/runtime/render/gaussian_renderer.gd` and `addons/gdgs/runtime/render/gaussian_rendering_device_context.gd`; no local plans/docs are present in the commit. Ran `git diff --check` before commit, then committed the clean branch as `4648f8a0b6860f69ace318c658e8e32467957c4c` (`fix: honor exact gdgs radix push constants`). Prepared the ready-to-open PR package text in-repo at `docs/upstream-pr-draft-issue-12-radix-push-constant-fix.md`, explicitly referencing upstream issue `#12`, describing the confirmed radix push-constant contract mismatch, and stating that the later `BLIT_PASS` / device-loss crash is out of scope. Stopped at ready-to-open; no PR was created.
 
 ---
 
@@ -100,17 +102,18 @@ This slice should stay disciplined: first verify repo rules and clean branch str
 
 ## Final Results
 
-**Status:** ⚠️ Draft
+**Status:** ⚠️ Partial
 
-**What We Built:** Pending execution.
+**What We Built:** Task 1 and Task 2 are complete: there is now a clean upstream-review branch containing only the confirmed runtime push-constant fix plus an in-repo PR draft that honestly frames scope against issue `#12`. Final readiness still needs the independent Task 3 audit.
 
-**Reference Check:** Pending.
+**Reference Check:** `REF-01` is cited in the PR draft; `REF-02` and `REF-03` informed the minimal replay; `REF-05` was reduced to a two-file clean commit suitable for upstream review.
 
 **Commits:**
-- Pending.
+- `4648f8a0b6860f69ace318c658e8e32467957c4c` - fix: honor exact gdgs radix push constants
 
 **Lessons Learned:**
 - A confirmed fix is not automatically upstream-ready; branch hygiene and honest scope framing matter.
+- A separate worktree is the safest way to prepare an upstream-clean branch when the investigation branch is intentionally dirty with local notes.
 
 ---
 

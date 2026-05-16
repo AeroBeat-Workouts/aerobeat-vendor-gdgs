@@ -94,12 +94,13 @@ This slice should stay narrow. We are not rewriting the radix algorithm. We are 
 - `/home/derrick/.openclaw/workspace/.temp/`
 
 **Files Created/Deleted/Modified:**
-- new QA artifact folders/logs/images/summaries as needed
-- plan/doc updates as needed
+- `/home/derrick/.openclaw/workspace/.temp/gdgs-push-constant-fix-qa-2026-05-16-dev5/`
+- `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/docs/gdgs-radix-push-constant-contract.md`
+- `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/.plans/2026-05-16-gdgs-push-constant-contract-fix.md`
 
-**Status:** ⏳ Pending
+**Status:** ✅ Complete
 
-**Results:** Pending.
+**Results:** QA reran the exact prior `REF-04` Godot 4.7-dev5 control-scene harness on the real Surface Pro 8 Wayland / Vulkan path, but now on branch `test/oc-xok-gdgs-radix-push-constant-contract` at commit `bc06934bfd08c4c0b082557537060fb9159ddbb1`, with fresh artifacts captured under `/home/derrick/.openclaw/workspace/.temp/gdgs-push-constant-fix-qa-2026-05-16-dev5/`. The narrow contract fix is definitely active in outcome terms: the repeated dev5 radix validation errors are gone in every enabled case (`compute_list_set_push_constant()` mismatch count dropped from `36` per crashing case in `REF-04` to `0`, and the follow-on missing-push-constant dispatch errors also dropped from `36` to `0`). That confirms the patch removed a real GDGS contract violation. But the user-visible/runtime failure class did **not** materially change. The case matrix stayed identical to `REF-04` (`compositor`, `direct_texture_world`, `direct_texture_canvas`, and `no_present` still exit `134`; `effect_disabled` still exits `0` with the same blank/background-only metrics), enabled crashing modes still produce valid compositor textures, `no_present` still proves script-side writeback/presentation can be skipped entirely, and Godot still converges on `Last known breadcrumb: BLIT_PASS` followed by `Vulkan device was lost.` Visible rendering did not improve and stability did not improve. So this Task 3 QA result is: the push-constant validation problem is fixed, but the later crash remains; the bug is therefore materially narrowed rather than resolved, and the surviving failure still looks engine-side or at least later than the removed push-constant misuse. References checked: `REF-03`, `REF-04`, `REF-06`.
 
 ---
 
