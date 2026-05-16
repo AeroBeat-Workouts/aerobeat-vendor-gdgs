@@ -127,4 +127,17 @@ Primary files for the future code fix lane:
 - `addons/gdgs/runtime/render/gaussian_renderer.gd`
 - `addons/gdgs/runtime/render/gaussian_rendering_device_context.gd` (only if an exact-size helper or helper flag is needed)
 
-No runtime code change was made in this note-only pass.
+## Implementation landed on 2026-05-16
+
+The targeted contract fix now exists on branch `test/oc-xok-gdgs-radix-push-constant-contract`:
+
+- `gaussian_rendering_device_context.gd` keeps the existing padded `create_push_constant()` behavior for legacy call sites, but now routes through a shared packer and exposes `create_exact_push_constant()` for exact-size dispatches.
+- `gaussian_renderer.gd` now sends distinct radix payloads per pass instead of one shared 3-field blob:
+  - `radix_sort_spine` -> `[radix_shift_pass]` -> 4 bytes
+  - `radix_sort_upsweep` -> `[radix_shift_pass, radix_input_offset]` -> 8 bytes
+  - `radix_sort_downsweep` -> `[radix_shift_pass, radix_input_offset, radix_output_offset]` -> 12 bytes
+
+Local validation for this implementation pass was a headless Godot import/register run:
+- `~/.local/bin/godot --import --headless --path /home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs`
+
+That validation confirms the touched GDGS scripts still register cleanly; 4.7-dev5 runtime verification remains the next QA lane.

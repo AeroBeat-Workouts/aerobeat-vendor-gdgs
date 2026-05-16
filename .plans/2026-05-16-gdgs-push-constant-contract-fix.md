@@ -70,12 +70,14 @@ This slice should stay narrow. We are not rewriting the radix algorithm. We are 
 - `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/`
 
 **Files Created/Deleted/Modified:**
-- targeted files under `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/addons/gdgs/runtime/render/`
-- docs/notes as needed
+- `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/addons/gdgs/runtime/render/gaussian_renderer.gd`
+- `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/addons/gdgs/runtime/render/gaussian_rendering_device_context.gd`
+- `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/docs/gdgs-radix-push-constant-contract.md`
+- `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/.plans/2026-05-16-gdgs-push-constant-contract-fix.md`
 
-**Status:** ⏳ Pending
+**Status:** ✅ Complete
 
-**Results:** Pending.
+**Results:** Claimed bead `oc-se2` and stayed on the dedicated branch `test/oc-xok-gdgs-radix-push-constant-contract` with the pre-existing unrelated dirty plan/doc edits left untouched. Implemented the narrowest reversible contract fix by preserving the existing padded `RenderingDeviceContext.create_push_constant()` path for legacy callers, adding a targeted `RenderingDeviceContext.create_exact_push_constant()` helper, and switching only the radix dispatch site in `gaussian_renderer.gd` to use exact per-pass payloads. Actual payload shapes are now `spine -> [radix_shift_pass]` (`4` bytes), `upsweep -> [radix_shift_pass, radix_input_offset]` (`8` bytes), and `downsweep -> [radix_shift_pass, radix_input_offset, radix_output_offset]` (`12` bytes), matching the shader-declared contracts from `REF-06` instead of reusing one shared 16-byte-padded blob. Updated the durable note `docs/gdgs-radix-push-constant-contract.md` with the landed implementation shape and validation status. Local validation run: `~/.local/bin/godot --import --headless --path /home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs`, which completed successfully on the host Godot install and re-registered `GaussianRenderer` plus `GdgsRenderingDeviceContext` without script parse errors. Committed on the task branch with message `fix: honor exact gdgs radix push constants`. References checked: `REF-02`, `REF-06`.
 
 ---
 
