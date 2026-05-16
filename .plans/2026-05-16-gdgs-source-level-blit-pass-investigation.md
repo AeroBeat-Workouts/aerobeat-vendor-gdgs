@@ -71,12 +71,12 @@ Execution should stay branch-based. We want a clean experimental branch for the 
 - `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/`
 
 **Files Created/Deleted/Modified:**
-- source files only if instrumentation is needed
-- investigation notes/docs as needed
+- `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/.plans/2026-05-16-gdgs-source-level-blit-pass-investigation.md`
+- `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/docs/gdgs-blit-pass-source-trace.md`
 
-**Status:** ⏳ Pending
+**Status:** ✅ Complete
 
-**Results:** Pending.
+**Results:** Claimed `oc-io5` on the existing investigation branch `research/oc-0o7-gdgs-ownership-map`, then traced the live crash path from `GaussianCompositorEffect._render_callback()` into `GaussianRenderManager.render_for_compositor()` and `GaussianRenderer._rasterize_state()`. What actually turned up: the plugin reliably reaches the vendored compute renderer, allocates/returns valid offscreen color+depth texture RIDs, and only then later trips the engine-side Vulkan device loss with breadcrumb `BLIT_PASS`. The decisive narrowing is the `No Present` case in `REF-06`: `gaussian_compositor_effect.gd` logs that it captured valid compositor textures and skipped all script-side composite/writeback/presentation work, yet the process still dies with the same `BLIT_PASS` boundary. That demotes `runtime/compositor/shaders/gaussian_composite.glsl` from primary suspect and shifts the lead suspicion to the vendored renderer compute chain in `runtime/render/`—especially `_rasterize_state()`, its indirect-dispatch path, and the RD image/buffer setup in `gaussian_gpu_state_cache.gd` / `gaussian_rendering_device_context.gd`. A durable source-trace and culprit shortlist was added in `docs/gdgs-blit-pass-source-trace.md`, explicitly separating vendor-patch candidates from the likely next escalation lane in Godot/Vulkan backend work if one more narrow vendor isolation pass does not expose a clear misuse. References checked: `REF-02`, `REF-06`, `REF-07`. 
 
 ---
 
