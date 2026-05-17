@@ -234,7 +234,11 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int, debug_pr
 		"projection_dispatch_serial": projection_dispatch_serial,
 		"push_constant_bytes": state.camera_push_constants.size(),
 		"push_constant_layout": str(state.diagnostics.get("projection_push_constant_layout", "unknown")),
-		"projection_group_count": state.diagnostics.get("projection_group_count", -1)
+		"projection_group_count": state.diagnostics.get("projection_group_count", -1),
+		"gpu_generation": int(state.gpu_generation),
+		"cleanup_request_serial": int(state.last_cleanup_request_serial),
+		"cleanup_request_reason": state.last_cleanup_reason,
+		"projection_resource_snapshot": JSON.stringify(_projection_resource_snapshot(state))
 	})
 	state.context.compute_list_end()
 	_run_projection_post_dispatch_checkpoint(state, point_count, debug_projection_readback_checkpoint)
@@ -358,7 +362,11 @@ func _projection_diagnostic_details(state, point_count: int) -> Dictionary:
 		"max_tile_id": maxi(int(state.diagnostics.get("tile_bounds_capacity", 0)) - 1, -1),
 		"splat_stride_bytes": state.diagnostics.get("projection_splat_stride_bytes_expected", -1),
 		"culled_stride_bytes": state.diagnostics.get("projection_culled_stride_bytes_expected", -1),
-		"point_count": point_count
+		"point_count": point_count,
+		"gpu_generation": int(state.gpu_generation),
+		"cleanup_request_serial": int(state.last_cleanup_request_serial),
+		"cleanup_request_reason": state.last_cleanup_reason,
+		"projection_resource_snapshot": JSON.stringify(_projection_resource_snapshot(state))
 	}
 
 func _projection_probe_seed_bytes(state, point_count: int) -> PackedByteArray:
@@ -530,7 +538,10 @@ func _run_projection_post_dispatch_checkpoint(state, point_count: int, checkpoin
 				"checkpoint": checkpoint_name
 			})
 	_log_stage("projection_post_dispatch_checkpoint_end", state, point_count, {
-		"checkpoint": checkpoint_name
+		"checkpoint": checkpoint_name,
+		"gpu_generation": int(state.gpu_generation),
+		"projection_dispatch_serial": int(state.last_projection_dispatch_serial),
+		"projection_resource_snapshot": JSON.stringify(_projection_resource_snapshot(state))
 	})
 
 func _log_projection_histogram_header_readback(state, point_count: int) -> void:
@@ -727,3 +738,52 @@ func _projection_readback_checkpoint_name(value: int) -> String:
 			return "scratch_projection_mirror_only"
 		_:
 			return "unknown(%d)" % value
+
+func _rid_string(rid: RID) -> String:
+	return str(rid) if rid.is_valid() else "RID()"
+
+func _descriptor_rid_string(state, key: String) -> String:
+	if not state.descriptors.has(key):
+		return "RID()"
+	return _rid_string(state.descriptors[key].rid)
+
+func _projection_resource_snapshot(state) -> Dictionary:
+	var snapshot := {
+		"gpu_generation": int(state.gpu_generation),
+		"projection_set": _rid_string(state.descriptor_sets.get("projection", RID())),
+		"scratch_probe_set": _rid_string(state.descriptor_sets.get("scratch_probe", RID())),
+		"projection_pipeline": _rid_string(state.pipelines.get("gsplat_projection", RID())),
+		"scratch_pipeline": _rid_string(state.pipelines.get("gsplat_scratch_probe", RID())),
+		"projection_probe": _descriptor_rid_string(state, "projection_probe"),
+		"scratch_probe": _descriptor_rid_string(state, "scratch_probe"),
+		"histogram": _descriptor_rid_string(state, "histogram"),
+		"sort_keys": _descriptor_rid_string(state, "sort_keys"),
+		"sort_values": _descriptor_rid_string(state, "sort_values"),
+		"culled_splats": _descriptor_rid_string(state, "culled_splats"),
+		"tile_bounds": _descriptor_rid_string(state, "tile_bounds"),
+		"render_texture": _descriptor_rid_string(state, "render_texture"),
+		"depth_texture": _descriptor_rid_string(state, "depth_texture")
+	}
+	var alias_values := [
+		snapshot["projection_probe"],
+		snapshot["scratch_probe"],
+		snapshot["histogram"],
+		snapshot["sort_keys"],
+		snapshot["sort_values"],
+		snapshot["culled_splats"],
+		snapshot["tile_bounds"],
+		snapshot["render_texture"],
+		snapshot["depth_texture"]
+	]
+	var seen := {}
+	var aliases: Array[String] = []
+	for value in alias_values:
+		if value == "RID()":
+			continue
+		if seen.has(value):
+			aliases.append(value)
+		else:
+			seen[value] = true
+	snapshot["aliasing_detected"] = str(not aliases.is_empty())
+	snapshot["alias_rids"] = "[" + ", ".join(aliases) + "]"
+	return snapshot

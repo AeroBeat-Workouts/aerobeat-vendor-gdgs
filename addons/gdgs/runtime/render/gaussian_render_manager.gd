@@ -69,7 +69,7 @@ func _apply_registry_result(result: Dictionary) -> void:
 	if result.is_empty():
 		return
 	if result.get("request_cleanup", false):
-		_gpu_state_cache.request_cleanup()
+		_gpu_state_cache.request_cleanup(result.get("cleanup_reason", "registry_change"))
 	if result.has("require_gpu_rebuild") and bool(result["require_gpu_rebuild"]):
 		_gpu_state_cache.mark_all_render_states_needs_gpu_rebuild()
 	if result.has("require_splat_upload") and bool(result["require_splat_upload"]):

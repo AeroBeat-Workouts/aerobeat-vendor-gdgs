@@ -37,12 +37,17 @@ class RenderState:
 	var depth_capture_alpha := 0.5
 	var diagnostics := {}
 	var last_projection_dispatch_serial := 0
+	var gpu_generation := 0
+	var last_cleanup_request_serial := 0
+	var last_cleanup_reason := "none"
+	var last_cleanup_projection_snapshot := {}
 	var needs_gpu_rebuild := true
 	var needs_splat_upload := false
 	var needs_instance_upload := false
 	var context: GdgsRenderingDeviceContext
 	var shaders: Dictionary = {}
 	var pipelines: Dictionary = {}
+	var descriptor_sets: Dictionary = {}
 	var descriptors: Dictionary = {}
 
 var _render_states: Dictionary = {}
@@ -52,13 +57,33 @@ var _pending_gpu_cleanup := false
 func has_render_states() -> bool:
 	return not _render_states.is_empty()
 
-func request_cleanup() -> void:
-	print("[gdgs] gpu_state_cache request_cleanup pending=%s active_states=%d" % [str(_pending_gpu_cleanup), _render_states.size()])
+func request_cleanup(reason: String = "registry_change") -> void:
+	var active_dispatch_serials: Array[String] = []
+	for state in _render_states.values():
+		state.last_cleanup_request_serial = int(state.last_projection_dispatch_serial)
+		state.last_cleanup_reason = reason
+		state.last_cleanup_projection_snapshot = _projection_resource_snapshot(state)
+		active_dispatch_serials.append("%s:%d" % [str(state.texture_size), int(state.last_projection_dispatch_serial)])
+	print("[gdgs] gpu_state_cache request_cleanup pending=%s active_states=%d reason=%s dispatch_serials=%s" % [
+		str(_pending_gpu_cleanup),
+		_render_states.size(),
+		reason,
+		"[" + ", ".join(active_dispatch_serials) + "]"
+	])
 	_pending_gpu_cleanup = true
 
 func flush_pending_cleanup() -> void:
 	if _pending_gpu_cleanup:
-		print("[gdgs] gpu_state_cache flush_pending_cleanup active_states=%d" % _render_states.size())
+		var cleanup_summaries: Array[String] = []
+		for state in _render_states.values():
+			cleanup_summaries.append("%s:g%d:d%d:req_d%d:%s" % [
+				str(state.texture_size),
+				int(state.gpu_generation),
+				int(state.last_projection_dispatch_serial),
+				int(state.last_cleanup_request_serial),
+				str(state.last_cleanup_reason)
+			])
+		print("[gdgs] gpu_state_cache flush_pending_cleanup active_states=%d summaries=%s" % [_render_states.size(), "[" + ", ".join(cleanup_summaries) + "]"])
 		cleanup_all()
 
 func get_or_create_render_state(texture_size: Vector2i):
@@ -141,27 +166,32 @@ func rebuild_gpu_state(state, point_count: int, unique_data_size: int, instance_
 		state.descriptors["projection_probe"],
 		state.descriptors["scratch_probe"]
 	], state.shaders["projection"], 0)
+	state.descriptor_sets["projection"] = projection_set
 
 	var radix_upsweep_set: RID = state.context.create_descriptor_set([
 		state.descriptors["histogram"],
 		state.descriptors["sort_keys"]
 	], state.shaders["radix_upsweep"], 0)
+	state.descriptor_sets["radix_upsweep"] = radix_upsweep_set
 
 	var radix_spine_set: RID = state.context.create_descriptor_set([
 		state.descriptors["histogram"]
 	], state.shaders["radix_spine"], 0)
+	state.descriptor_sets["radix_spine"] = radix_spine_set
 
 	var radix_downsweep_set: RID = state.context.create_descriptor_set([
 		state.descriptors["histogram"],
 		state.descriptors["sort_keys"],
 		state.descriptors["sort_values"]
 	], state.shaders["radix_downsweep"], 0)
+	state.descriptor_sets["radix_downsweep"] = radix_downsweep_set
 
 	var boundaries_set: RID = state.context.create_descriptor_set([
 		state.descriptors["histogram"],
 		state.descriptors["sort_keys"],
 		state.descriptors["tile_bounds"]
 	], state.shaders["boundaries"], 0)
+	state.descriptor_sets["boundaries"] = boundaries_set
 
 	var render_set: RID = state.context.create_descriptor_set([
 		state.descriptors["culled_splats"],
@@ -171,10 +201,12 @@ func rebuild_gpu_state(state, point_count: int, unique_data_size: int, instance_
 		state.descriptors["render_texture"],
 		state.descriptors["depth_texture"]
 	], state.shaders["render"], 0)
+	state.descriptor_sets["render"] = render_set
 
 	var scratch_probe_set: RID = state.context.create_descriptor_set([
 		state.descriptors["scratch_probe"]
 	], state.shaders["scratch_probe"], 0)
+	state.descriptor_sets["scratch_probe"] = scratch_probe_set
 	assert(scratch_probe_set.is_valid(), "Scratch probe uniform set failed to create")
 
 	state.pipelines["gsplat_projection"] = state.context.create_pipeline("gsplat_projection", [ceili(point_count / 256.0), 1, 1], [projection_set], state.shaders["projection"])
@@ -185,7 +217,9 @@ func rebuild_gpu_state(state, point_count: int, unique_data_size: int, instance_
 	state.pipelines["gsplat_render"] = state.context.create_pipeline("gsplat_render", [state.tile_dims.x, state.tile_dims.y, 1], [render_set], state.shaders["render"])
 	state.pipelines["gsplat_scratch_probe"] = state.context.create_pipeline("gsplat_scratch_probe", [1, 1, 1], [scratch_probe_set], state.shaders["scratch_probe"])
 
+	state.gpu_generation += 1
 	state.diagnostics = {
+		"gpu_generation": state.gpu_generation,
 		"point_count_capacity": point_count,
 		"instance_count_capacity": instance_count,
 		"texture_size": state.texture_size,
@@ -206,6 +240,12 @@ func rebuild_gpu_state(state, point_count: int, unique_data_size: int, instance_
 		"scratch_probe_bytes": SCRATCH_PROBE_WORDS * 4
 	}
 
+	print("[gdgs] gpu_state_cache rebuild_gpu_state texture_size=%s gpu_generation=%d projection_dispatch_serial=%d snapshot=%s" % [
+		str(state.texture_size),
+		int(state.gpu_generation),
+		int(state.last_projection_dispatch_serial),
+		JSON.stringify(_projection_resource_snapshot(state))
+	])
 	state.needs_gpu_rebuild = false
 	state.needs_splat_upload = true
 	state.needs_instance_upload = true
@@ -230,16 +270,23 @@ func cleanup_state(state) -> void:
 	if state == null:
 		return
 	if state.context != null:
-		print("[gdgs] gpu_state_cache cleanup_state texture_size=%s last_projection_dispatch_serial=%d projection_probe_valid=%s scratch_probe_valid=%s" % [
+		print("[gdgs] gpu_state_cache cleanup_state texture_size=%s gpu_generation=%d last_projection_dispatch_serial=%d last_cleanup_request_serial=%d last_cleanup_reason=%s projection_probe_valid=%s scratch_probe_valid=%s snapshot=%s request_snapshot=%s" % [
 			str(state.texture_size),
+			int(state.gpu_generation),
 			int(state.last_projection_dispatch_serial),
+			int(state.last_cleanup_request_serial),
+			state.last_cleanup_reason,
 			str(state.descriptors.has("projection_probe") and state.descriptors["projection_probe"].rid.is_valid()),
-			str(state.descriptors.has("scratch_probe") and state.descriptors["scratch_probe"].rid.is_valid())
+			str(state.descriptors.has("scratch_probe") and state.descriptors["scratch_probe"].rid.is_valid()),
+			JSON.stringify(_projection_resource_snapshot(state)),
+			JSON.stringify(state.last_cleanup_projection_snapshot)
 		])
+		state.last_cleanup_projection_snapshot = _projection_resource_snapshot(state)
 		state.context.free()
 		state.context = null
 	state.shaders.clear()
 	state.pipelines.clear()
+	state.descriptor_sets.clear()
 	state.descriptors.clear()
 	state.needs_gpu_rebuild = true
 	state.needs_splat_upload = true
@@ -266,3 +313,54 @@ func _enforce_render_state_cache_limit() -> void:
 		if stale_state != null:
 			cleanup_state(stale_state)
 			_render_states.erase(stale_size)
+
+func _rid_string(rid: RID) -> String:
+	return str(rid) if rid.is_valid() else "RID()"
+
+func _descriptor_rid_string(state, key: String) -> String:
+	if not state.descriptors.has(key):
+		return "RID()"
+	return _rid_string(state.descriptors[key].rid)
+
+func _projection_resource_snapshot(state) -> Dictionary:
+	var snapshot := {
+		"gpu_generation": int(state.gpu_generation),
+		"texture_size": str(state.texture_size),
+		"last_projection_dispatch_serial": int(state.last_projection_dispatch_serial),
+		"projection_set": _rid_string(state.descriptor_sets.get("projection", RID())),
+		"scratch_probe_set": _rid_string(state.descriptor_sets.get("scratch_probe", RID())),
+		"projection_pipeline": _rid_string(state.pipelines.get("gsplat_projection", RID())),
+		"scratch_pipeline": _rid_string(state.pipelines.get("gsplat_scratch_probe", RID())),
+		"projection_probe": _descriptor_rid_string(state, "projection_probe"),
+		"scratch_probe": _descriptor_rid_string(state, "scratch_probe"),
+		"histogram": _descriptor_rid_string(state, "histogram"),
+		"sort_keys": _descriptor_rid_string(state, "sort_keys"),
+		"sort_values": _descriptor_rid_string(state, "sort_values"),
+		"culled_splats": _descriptor_rid_string(state, "culled_splats"),
+		"tile_bounds": _descriptor_rid_string(state, "tile_bounds"),
+		"render_texture": _descriptor_rid_string(state, "render_texture"),
+		"depth_texture": _descriptor_rid_string(state, "depth_texture")
+	}
+	var alias_values := [
+		snapshot["projection_probe"],
+		snapshot["scratch_probe"],
+		snapshot["histogram"],
+		snapshot["sort_keys"],
+		snapshot["sort_values"],
+		snapshot["culled_splats"],
+		snapshot["tile_bounds"],
+		snapshot["render_texture"],
+		snapshot["depth_texture"]
+	]
+	var seen := {}
+	var aliases: Array[String] = []
+	for value in alias_values:
+		if value == "RID()":
+			continue
+		if seen.has(value):
+			aliases.append(value)
+		else:
+			seen[value] = true
+	snapshot["aliasing_detected"] = str(not aliases.is_empty())
+	snapshot["alias_rids"] = "[" + ", ".join(aliases) + "]"
+	return snapshot

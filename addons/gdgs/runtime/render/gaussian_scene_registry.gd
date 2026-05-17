@@ -118,7 +118,7 @@ func _sync_scene_resources(force_rebuild: bool) -> Dictionary:
 		_splat_instance_ids_byte = PackedByteArray()
 		_instance_count = 0
 		_instance_transforms_byte = PackedByteArray()
-		return _change_result(true, false, false, false)
+		return _change_result(true, false, false, false, "scene_registry_empty")
 
 	var count_changed := total_point_count != _point_count
 	var point_data_size_changed := merged_point_data.size() != _point_data_byte.size()
@@ -228,10 +228,12 @@ func _change_result(
 	request_cleanup: bool,
 	require_gpu_rebuild: bool,
 	require_splat_upload: bool,
-	require_instance_upload: bool
+	require_instance_upload: bool,
+	cleanup_reason: String = "registry_change"
 ) -> Dictionary:
 	return {
 		"request_cleanup": request_cleanup,
+		"cleanup_reason": cleanup_reason,
 		"require_gpu_rebuild": require_gpu_rebuild,
 		"require_splat_upload": require_splat_upload,
 		"require_instance_upload": require_instance_upload
