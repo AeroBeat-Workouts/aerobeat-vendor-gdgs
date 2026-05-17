@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://cy4qd2u0s2s8m"
+path="res://.godot/imported/gsplat_scratch_probe.glsl-0a53179986fef52f527e6c264d33e087.res"
+
+[deps]
+
+source_file="res://addons/gdgs/runtime/render/shaders/compute/gsplat_scratch_probe.glsl"
+dest_files=["res://.godot/imported/gsplat_scratch_probe.glsl-0a53179986fef52f527e6c264d33e087.res"]
+
+[params]
+

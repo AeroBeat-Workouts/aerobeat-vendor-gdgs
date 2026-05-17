@@ -93,6 +93,7 @@ func rebuild_gpu_state(state, point_count: int, unique_data_size: int, instance_
 	state.shaders["boundaries"] = state.context.load_shader(SHADER_PATH_BOUNDARIES)
 	state.shaders["render"] = state.context.load_shader(SHADER_PATH_RENDER)
 	state.shaders["scratch_probe"] = state.context.load_shader(SHADER_PATH_SCRATCH_PROBE)
+	assert(state.shaders["scratch_probe"].is_valid(), "Scratch probe shader failed to load")
 
 	var num_sort_elements_max := point_count * MAX_SORT_ELEMENTS_PER_SPLAT
 	var num_partitions := (num_sort_elements_max + PARTITION_SIZE - 1) / PARTITION_SIZE
@@ -166,6 +167,7 @@ func rebuild_gpu_state(state, point_count: int, unique_data_size: int, instance_
 	var scratch_probe_set: RID = state.context.create_descriptor_set([
 		state.descriptors["scratch_probe"]
 	], state.shaders["scratch_probe"], 0)
+	assert(scratch_probe_set.is_valid(), "Scratch probe uniform set failed to create")
 
 	state.pipelines["gsplat_projection"] = state.context.create_pipeline("gsplat_projection", [ceili(point_count / 256.0), 1, 1], [projection_set], state.shaders["projection"])
 	state.pipelines["radix_sort_upsweep"] = state.context.create_pipeline("radix_sort_upsweep", [num_partitions, 1, 1], [radix_upsweep_set], state.shaders["radix_upsweep"])

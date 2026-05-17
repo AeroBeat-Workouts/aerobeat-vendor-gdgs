@@ -127,8 +127,15 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int) -> void:
 		return
 
 	if debug_raster_stage == RasterDebugStage.SCRATCH_ONLY:
+		assert(state.shaders.get("scratch_probe", RID()).is_valid(), "Scratch probe shader must be valid before scratch_only dispatch")
+		assert(state.descriptors.get("scratch_probe", null) != null and state.descriptors["scratch_probe"].rid.is_valid(), "Scratch probe buffer must be valid before scratch_only dispatch")
+		assert(state.pipelines.has("gsplat_scratch_probe"), "Scratch probe pipeline must exist before scratch_only dispatch")
 		var scratch_compute_list: int = state.context.compute_list_begin()
-		_log_stage("scratch_dispatch_begin", state, point_count, {"scratch_probe_bytes": state.diagnostics.get("scratch_probe_bytes", -1)})
+		_log_stage("scratch_dispatch_begin", state, point_count, {
+			"scratch_probe_bytes": state.diagnostics.get("scratch_probe_bytes", -1),
+			"scratch_shader_valid": str(state.shaders.get("scratch_probe", RID()).is_valid()),
+			"scratch_buffer_valid": str(state.descriptors["scratch_probe"].rid.is_valid())
+		})
 		state.pipelines["gsplat_scratch_probe"].call(state.context, scratch_compute_list, PackedByteArray())
 		state.context.compute_list_end()
 		_log_scratch_probe_readback(state, point_count)
@@ -283,8 +290,14 @@ func _log_scratch_probe_readback(state, point_count: int) -> void:
 	var scratch_words: Array[String] = []
 	for i in range(int(scratch_data.size() / 4)):
 		scratch_words.append("0x%08x" % scratch_data.decode_u32(i * 4))
+	var scratch_signature_ok := scratch_words.size() >= 4 \
+		and scratch_words[0] == "0x47534744" \
+		and scratch_words[1] == "0x00000001" \
+		and scratch_words[2] == "0x00000001" \
+		and scratch_words[3] == "0x5a5aa5a5"
 	_log_stage("scratch_post_dispatch", state, point_count, {
 		"scratch_words": ",".join(scratch_words),
+		"scratch_signature_ok": str(scratch_signature_ok),
 		"scratch_probe_valid": str(state.descriptors["scratch_probe"].rid.is_valid()),
 		"histogram_valid": str(state.descriptors["histogram"].rid.is_valid())
 	})
