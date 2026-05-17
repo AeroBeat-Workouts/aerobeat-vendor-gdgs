@@ -26,6 +26,12 @@ enum DebugView {
 	DEPTH_REJECT_MASK
 }
 
+enum CompositorDebugStage {
+	FULL_PIPELINE,
+	CALLBACK_ONLY,
+	RASTER_ONLY_NO_WRITEBACK
+}
+
 @export_range(0.0, 1.0, 0.001) var alpha_cutoff := 0.01
 @export_range(0.0, 1.0, 0.001) var depth_bias := 0.05
 @export_range(0.0, 1.0, 0.001) var depth_test_min_alpha := 0.05
@@ -39,6 +45,8 @@ enum DebugView {
 		return _display_mode
 @export_enum("Composite", "GS Alpha", "GS Color", "GS Depth", "Scene Depth", "Depth Reject Mask") var debug_view: int = DebugView.COMPOSITE
 @export var ignore_scene_depth_in_composite := false
+@export_enum("Full Pipeline", "Callback Only", "Raster Only (No Writeback)") var debug_compositor_stage: int = CompositorDebugStage.FULL_PIPELINE
+@export_enum("Full Pipeline", "Prepared / No Dispatch", "Projection Only", "Radix Only", "Boundaries Only", "Render Only") var debug_raster_stage: int = 0
 
 var rd: RenderingDevice
 var shader: RID
@@ -111,7 +119,19 @@ func _render_callback(_effect_callback_type: int, render_data: RenderData) -> vo
 			str(enabled)
 		]
 	)
+	_log_once(
+		"debug_stage_summary",
+		"[gdgs] compositor stage gate=%s raster stage gate=%s" % [
+			_compositor_stage_name(debug_compositor_stage),
+			_raster_stage_name(debug_raster_stage)
+		]
+	)
 	_log_once("render_callback_entered", "[gdgs] compositor render callback entered")
+	print("[gdgs] compositor stage=enter_callback mode=%s compositor_stage=%s raster_stage=%s" % [
+		_display_mode_name(current_display_mode),
+		_compositor_stage_name(debug_compositor_stage),
+		_raster_stage_name(debug_raster_stage)
+	])
 	if not (uses_overlay or is_no_present_mode) and (not rd or not shader.is_valid() or not pipeline.is_valid()):
 		_queue_direct_texture_presentation(DisplayMode.COMPOSITOR, RID())
 		return
@@ -125,6 +145,20 @@ func _render_callback(_effect_callback_type: int, render_data: RenderData) -> vo
 	var manager = MANAGER_SCRIPT.get_instance()
 	_log_once("manager_lookup", "[gdgs] compositor manager lookup result=%s" % ("found" if manager != null else "missing"))
 	if manager == null:
+		_queue_direct_texture_presentation(DisplayMode.COMPOSITOR, RID())
+		return
+
+	var global_rd := RenderingServer.get_rendering_device()
+	_log_once(
+		"rd_seam_correction",
+		"[gdgs] seam correction compositor_path_uses_global_rd=%s raster_path_expected_global_rd=%s local_device_submit_sync_exercised=%s" % [
+			str(global_rd != null and rd == global_rd),
+			"true",
+			"false"
+		]
+	)
+	if debug_compositor_stage == CompositorDebugStage.CALLBACK_ONLY:
+		print("[gdgs] compositor stage=callback_only_gate skipped render_for_compositor and writeback")
 		_queue_direct_texture_presentation(DisplayMode.COMPOSITOR, RID())
 		return
 
@@ -145,13 +179,16 @@ func _render_callback(_effect_callback_type: int, render_data: RenderData) -> vo
 		if camera_data.is_empty():
 			continue
 
+		print("[gdgs] compositor stage=camera_data_ready view=%d size=%s" % [view, str(size)])
 		var gsplat_result: Dictionary = manager.render_for_compositor(
 			size,
 			camera_data["transform"],
 			camera_data["projection"],
 			camera_data["world_position"],
-			_get_depth_capture_alpha()
+			_get_depth_capture_alpha(),
+			debug_raster_stage
 		)
+		print("[gdgs] compositor stage=render_for_compositor_returned view=%d empty=%s" % [view, str(gsplat_result.is_empty())])
 		if gsplat_result.is_empty():
 			_log_once("render_result_empty", "[gdgs] render_for_compositor() returned an empty result")
 			continue
@@ -175,6 +212,10 @@ func _render_callback(_effect_callback_type: int, render_data: RenderData) -> vo
 
 		if is_no_present_mode:
 			_log_once("no_present", "[gdgs] no-present mode captured valid compositor textures and skipped all writeback/presentation work")
+			print("[gdgs] compositor stage=no_present_early_out view=%d" % view)
+			break
+		if debug_compositor_stage == CompositorDebugStage.RASTER_ONLY_NO_WRITEBACK:
+			print("[gdgs] compositor stage=raster_only_no_writeback_gate view=%d" % view)
 			break
 
 		var scene_tex: RID = scene_buffers.get_color_layer(view)
@@ -230,6 +271,7 @@ func _render_callback(_effect_callback_type: int, render_data: RenderData) -> vo
 			gsplat_depth_uniform,
 			scene_depth_uniform
 		])
+		print("[gdgs] compositor stage=writeback_uniform_set_created view=%d uniform_set_valid=%s" % [view, str(uniform_set.is_valid())])
 		_log_once(
 			"dispatch",
 			"[gdgs] compositor dispatch pending display_mode=%s debug_view=%s use_scene_depth=%s size=%s" % [
@@ -247,6 +289,7 @@ func _render_callback(_effect_callback_type: int, render_data: RenderData) -> vo
 			push_constants.to_byte_array(),
 			push_constants.size() * 4
 		)
+		print("[gdgs] compositor stage=writeback_dispatch_submitted view=%d groups=%s push_constant_bytes=%d" % [view, str(Vector3i(x_groups, y_groups, 1)), push_constants.size() * 4])
 		rd.compute_list_dispatch(compute_list, x_groups, y_groups, 1)
 		rd.compute_list_end()
 
@@ -254,6 +297,7 @@ func _render_callback(_effect_callback_type: int, render_data: RenderData) -> vo
 		_queue_direct_texture_presentation(DisplayMode.COMPOSITOR, RID())
 	elif not uses_overlay:
 		_queue_direct_texture_presentation(DisplayMode.COMPOSITOR, RID())
+	print("[gdgs] compositor stage=callback_return uses_overlay=%s no_present=%s" % [str(uses_overlay), str(is_no_present_mode)])
 
 func _get_camera_data(scene_data: RenderSceneDataRD, view: int) -> Dictionary:
 	if scene_data == null:
@@ -336,6 +380,34 @@ func _debug_view_name(value: int) -> String:
 			return "Scene Depth"
 		DebugView.DEPTH_REJECT_MASK:
 			return "Depth Reject Mask"
+		_:
+			return "Unknown(%d)" % value
+
+func _compositor_stage_name(value: int) -> String:
+	match value:
+		CompositorDebugStage.FULL_PIPELINE:
+			return "full_pipeline"
+		CompositorDebugStage.CALLBACK_ONLY:
+			return "callback_only"
+		CompositorDebugStage.RASTER_ONLY_NO_WRITEBACK:
+			return "raster_only_no_writeback"
+		_:
+			return "Unknown(%d)" % value
+
+func _raster_stage_name(value: int) -> String:
+	match value:
+		GaussianRenderer.RasterDebugStage.FULL_PIPELINE:
+			return "full_pipeline"
+		GaussianRenderer.RasterDebugStage.PREPARED_NO_DISPATCH:
+			return "prepared_no_dispatch"
+		GaussianRenderer.RasterDebugStage.PROJECTION_ONLY:
+			return "projection_only"
+		GaussianRenderer.RasterDebugStage.RADIX_ONLY:
+			return "radix_only"
+		GaussianRenderer.RasterDebugStage.BOUNDARIES_ONLY:
+			return "boundaries_only"
+		GaussianRenderer.RasterDebugStage.RENDER_ONLY:
+			return "render_only"
 		_:
 			return "Unknown(%d)" % value
 

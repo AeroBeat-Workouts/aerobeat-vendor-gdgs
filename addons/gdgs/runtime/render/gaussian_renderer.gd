@@ -6,6 +6,15 @@ const RenderingDeviceContext := preload("res://addons/gdgs/runtime/render/gaussi
 const RADIX := 256
 const MAX_SORT_ELEMENTS_PER_SPLAT := 10
 
+enum RasterDebugStage {
+	FULL_PIPELINE,
+	PREPARED_NO_DISPATCH,
+	PROJECTION_ONLY,
+	RADIX_ONLY,
+	BOUNDARIES_ONLY,
+	RENDER_ONLY
+}
+
 var _once_logs := {}
 
 func render_for_compositor(
@@ -15,7 +24,8 @@ func render_for_compositor(
 	camera_transform: Transform3D,
 	camera_projection: Projection,
 	camera_world_position: Vector3,
-	depth_capture_alpha: float = 0.5
+	depth_capture_alpha: float = 0.5,
+	debug_raster_stage: int = RasterDebugStage.FULL_PIPELINE
 ) -> Dictionary:
 	state_cache.flush_pending_cleanup()
 
@@ -46,7 +56,24 @@ func render_for_compositor(
 	if state.camera_push_constants.is_empty():
 		return {}
 
-	_rasterize_state(state, point_count)
+	_log_once(
+		"rd_seam_correction",
+		"[gdgs] seam correction compositor_path_uses_global_rd=%s raster_path_uses_global_rd=%s local_device_submit_sync_exercised=%s" % [
+			str(RenderingServer.get_rendering_device() != null),
+			str(state.context.device == RenderingServer.get_rendering_device()),
+			"false"
+		]
+	)
+	_log_once(
+		"direct_dispatch_isolation",
+		"[gdgs] renderer using direct dispatch isolation for radix/boundary passes"
+	)
+	_log_once(
+		"raster_stage_gate",
+		"[gdgs] renderer raster stage gate=%s" % _raster_stage_name(debug_raster_stage)
+	)
+
+	_rasterize_state(state, point_count, debug_raster_stage)
 	if state.descriptors.has("render_texture") and state.descriptors.has("depth_texture"):
 		var color_texture: RID = state.descriptors["render_texture"].rid
 		var depth_texture: RID = state.descriptors["depth_texture"].rid
@@ -65,7 +92,7 @@ func render_for_compositor(
 		}
 	return {}
 
-func _rasterize_state(state, point_count: int) -> void:
+func _rasterize_state(state, point_count: int, debug_raster_stage: int) -> void:
 	if state.context == null:
 		return
 
@@ -82,17 +109,36 @@ func _rasterize_state(state, point_count: int) -> void:
 	state.context.device.buffer_update(state.descriptors["uniforms"].rid, 0, 8 * 4, uniforms)
 	state.context.device.buffer_clear(state.descriptors["histogram"].rid, 0, 4 + 4 * RADIX * 4)
 	state.context.device.buffer_clear(state.descriptors["tile_bounds"].rid, 0, state.tile_dims.x * state.tile_dims.y * 2 * 4)
+	_log_stage("prepared", state, point_count, {"raster_stage_gate": _raster_stage_name(debug_raster_stage)})
 
-	_log_once("direct_dispatch_isolation", "[gdgs] renderer using direct dispatch isolation for radix/boundary passes")
+	if debug_raster_stage == RasterDebugStage.PREPARED_NO_DISPATCH:
+		_log_stage("prepared_no_dispatch_gate", state, point_count)
+		return
 
 	var compute_list: int = state.context.compute_list_begin()
+	_log_stage("projection_begin", state, point_count)
 	state.pipelines["gsplat_projection"].call(state.context, compute_list, state.camera_push_constants)
+	_log_stage("projection_end", state, point_count, {"push_constant_bytes": state.camera_push_constants.size()})
 	state.context.compute_list_end()
+
+	if debug_raster_stage == RasterDebugStage.PROJECTION_ONLY:
+		_log_stage("projection_only_gate", state, point_count)
+		return
 
 	compute_list = state.context.compute_list_begin()
 	for radix_shift_pass in range(4):
 		var radix_input_offset := point_count * MAX_SORT_ELEMENTS_PER_SPLAT * (radix_shift_pass % 2)
 		var radix_output_offset := point_count * MAX_SORT_ELEMENTS_PER_SPLAT * (1 - (radix_shift_pass % 2))
+		_log_stage(
+			"radix_pass_begin",
+			state,
+			point_count,
+			{
+				"pass": radix_shift_pass,
+				"radix_input_offset": radix_input_offset,
+				"radix_output_offset": radix_output_offset
+			}
+		)
 		state.pipelines["radix_sort_upsweep"].call(
 			state.context,
 			compute_list,
@@ -115,19 +161,48 @@ func _rasterize_state(state, point_count: int) -> void:
 				radix_output_offset
 			])
 		)
+		_log_stage(
+			"radix_pass_end",
+			state,
+			point_count,
+			{
+				"pass": radix_shift_pass,
+				"radix_input_offset": radix_input_offset,
+				"radix_output_offset": radix_output_offset
+			}
+		)
 	state.context.compute_list_end()
 
+	if debug_raster_stage == RasterDebugStage.RADIX_ONLY:
+		_log_stage("radix_only_gate", state, point_count)
+		return
+
 	compute_list = state.context.compute_list_begin()
+	_log_stage("boundaries_begin", state, point_count, {"tile_dims": str(state.tile_dims)})
 	state.pipelines["gsplat_boundaries"].call(state.context, compute_list, PackedByteArray())
+	_log_stage("boundaries_end", state, point_count, {"tile_dims": str(state.tile_dims)})
 	state.context.compute_list_end()
 
+	if debug_raster_stage == RasterDebugStage.BOUNDARIES_ONLY:
+		_log_stage("boundaries_only_gate", state, point_count)
+		return
+
 	compute_list = state.context.compute_list_begin()
+	var render_push_constant := RenderingDeviceContext.create_push_constant([0.0, -1, state.depth_capture_alpha, 0.0])
+	_log_stage("render_begin", state, point_count, {"push_constant_bytes": render_push_constant.size()})
 	state.pipelines["gsplat_render"].call(
 		state.context,
 		compute_list,
-		RenderingDeviceContext.create_push_constant([0.0, -1, state.depth_capture_alpha, 0.0])
+		render_push_constant
 	)
+	_log_stage("render_end", state, point_count, {"push_constant_bytes": render_push_constant.size()})
 	state.context.compute_list_end()
+
+	if debug_raster_stage == RasterDebugStage.RENDER_ONLY:
+		_log_stage("render_only_gate", state, point_count)
+		return
+
+	_log_stage("rasterize_state_return", state, point_count)
 
 func _update_camera_from_transform(state, camera_transform: Transform3D, camera_projection: Projection) -> void:
 	var view := Projection(camera_transform.affine_inverse())
@@ -151,3 +226,31 @@ func _log_once(key: String, message: String) -> void:
 		return
 	_once_logs[key] = true
 	print(message)
+
+func _log_stage(stage: String, state, point_count: int, extras: Dictionary = {}) -> void:
+	var details := [
+		"[gdgs] renderer stage=%s" % stage,
+		"point_count=%d" % point_count,
+		"texture_size=%s" % str(state.texture_size),
+		"tile_dims=%s" % str(state.tile_dims)
+	]
+	for key in extras.keys():
+		details.append("%s=%s" % [str(key), str(extras[key])])
+	print(" ".join(details))
+
+func _raster_stage_name(value: int) -> String:
+	match value:
+		RasterDebugStage.FULL_PIPELINE:
+			return "full_pipeline"
+		RasterDebugStage.PREPARED_NO_DISPATCH:
+			return "prepared_no_dispatch"
+		RasterDebugStage.PROJECTION_ONLY:
+			return "projection_only"
+		RasterDebugStage.RADIX_ONLY:
+			return "radix_only"
+		RasterDebugStage.BOUNDARIES_ONLY:
+			return "boundaries_only"
+		RasterDebugStage.RENDER_ONLY:
+			return "render_only"
+		_:
+			return "unknown(%d)" % value

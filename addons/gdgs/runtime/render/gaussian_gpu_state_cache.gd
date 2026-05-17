@@ -159,12 +159,12 @@ func rebuild_gpu_state(state, point_count: int, unique_data_size: int, instance_
 		state.descriptors["depth_texture"]
 	], state.shaders["render"], 0)
 
-	state.pipelines["gsplat_projection"] = state.context.create_pipeline([ceili(point_count / 256.0), 1, 1], [projection_set], state.shaders["projection"])
-	state.pipelines["radix_sort_upsweep"] = state.context.create_pipeline([num_partitions, 1, 1], [radix_upsweep_set], state.shaders["radix_upsweep"])
-	state.pipelines["radix_sort_spine"] = state.context.create_pipeline([RADIX, 1, 1], [radix_spine_set], state.shaders["radix_spine"])
-	state.pipelines["radix_sort_downsweep"] = state.context.create_pipeline([num_partitions, 1, 1], [radix_downsweep_set], state.shaders["radix_downsweep"])
-	state.pipelines["gsplat_boundaries"] = state.context.create_pipeline([max_boundary_workgroups, 1, 1], [boundaries_set], state.shaders["boundaries"])
-	state.pipelines["gsplat_render"] = state.context.create_pipeline([state.tile_dims.x, state.tile_dims.y, 1], [render_set], state.shaders["render"])
+	state.pipelines["gsplat_projection"] = state.context.create_pipeline("gsplat_projection", [ceili(point_count / 256.0), 1, 1], [projection_set], state.shaders["projection"])
+	state.pipelines["radix_sort_upsweep"] = state.context.create_pipeline("radix_sort_upsweep", [num_partitions, 1, 1], [radix_upsweep_set], state.shaders["radix_upsweep"])
+	state.pipelines["radix_sort_spine"] = state.context.create_pipeline("radix_sort_spine", [RADIX, 1, 1], [radix_spine_set], state.shaders["radix_spine"])
+	state.pipelines["radix_sort_downsweep"] = state.context.create_pipeline("radix_sort_downsweep", [num_partitions, 1, 1], [radix_downsweep_set], state.shaders["radix_downsweep"])
+	state.pipelines["gsplat_boundaries"] = state.context.create_pipeline("gsplat_boundaries", [max_boundary_workgroups, 1, 1], [boundaries_set], state.shaders["boundaries"])
+	state.pipelines["gsplat_render"] = state.context.create_pipeline("gsplat_render", [state.tile_dims.x, state.tile_dims.y, 1], [render_set], state.shaders["render"])
 
 	state.needs_gpu_rebuild = false
 	state.needs_splat_upload = true

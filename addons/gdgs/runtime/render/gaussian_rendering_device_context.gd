@@ -98,7 +98,7 @@ func create_descriptor_set(descriptors: Array, shader: RID, descriptor_set_index
 		uniforms.push_back(uniform)
 	return deletion_queue.push(device.uniform_set_create(uniforms, shader, descriptor_set_index))
 
-func create_pipeline(block_dimensions: Array, descriptor_sets: Array, shader: RID) -> Callable:
+func create_pipeline(debug_name: String, block_dimensions: Array, descriptor_sets: Array, shader: RID) -> Callable:
 	var pipeline := deletion_queue.push(device.compute_pipeline_create(shader))
 	return func(
 		context: GdgsRenderingDeviceContext,
@@ -113,16 +113,25 @@ func create_pipeline(block_dimensions: Array, descriptor_sets: Array, shader: RI
 		assert(sets.size() >= 1, "Must specify at least one descriptor set.")
 
 		var rd := context.device
+		var is_indirect := block_dimensions_overwrite_buffer.is_valid()
+		var dispatch_group_count := str(Vector3i(block_dimensions[0], block_dimensions[1], block_dimensions[2])) if block_dimensions.size() == 3 else "indirect"
+		print("[gdgs] rd dispatch pipeline=%s push_constant_bytes=%d direct=%s group_count=%s" % [
+			debug_name,
+			push_constant.size(),
+			str(not is_indirect),
+			dispatch_group_count
+		])
 		rd.compute_list_bind_compute_pipeline(compute_list, pipeline)
 		if not push_constant.is_empty():
 			rd.compute_list_set_push_constant(compute_list, push_constant, push_constant.size())
 		for i in range(sets.size()):
 			rd.compute_list_bind_uniform_set(compute_list, sets[i], i)
-		if block_dimensions_overwrite_buffer.is_valid():
+		if is_indirect:
 			rd.compute_list_dispatch_indirect(compute_list, block_dimensions_overwrite_buffer, block_dimensions_overwrite_buffer_byte_offset)
 		else:
 			rd.compute_list_dispatch(compute_list, block_dimensions[0], block_dimensions[1], block_dimensions[2])
 		rd.compute_list_add_barrier(compute_list)
+		print("[gdgs] rd barrier complete pipeline=%s" % debug_name)
 
 static func create_push_constant(data: Array) -> PackedByteArray:
 	return _pack_push_constant(data, true)
