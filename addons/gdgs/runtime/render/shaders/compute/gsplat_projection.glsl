@@ -1,4 +1,4 @@
-﻿#[compute]
+#[compute]
 #version 460
 
 #extension GL_KHR_shader_subgroup_arithmetic: enable
@@ -89,10 +89,28 @@ layout (std140, set = 0, binding = 8) restrict uniform Uniforms {
 	int _uniform_pad0;
 };
 
+layout(std430, set = 0, binding = 9) restrict buffer ProjectionProbe {
+	uint projection_probe[];
+};
+
 layout(push_constant) restrict readonly uniform PushConstants {
 	mat4 view_matrix;
 	mat4 projection_matrix;
 };
+
+const uint PROJECTION_PROBE_INVOCATIONS = 0u;
+const uint PROJECTION_PROBE_VISIBLE_SPLATS = 1u;
+const uint PROJECTION_PROBE_DUPLICATED_SPLATS = 2u;
+const uint PROJECTION_PROBE_EMITTED_SORT_ELEMENTS = 3u;
+const uint PROJECTION_PROBE_MAX_SORT_END = 4u;
+const uint PROJECTION_PROBE_MAX_TILE_ID = 5u;
+const uint PROJECTION_PROBE_MAX_TILES_TOUCHED = 6u;
+const uint PROJECTION_PROBE_ZERO_TILE_SPLATS = 7u;
+const uint PROJECTION_PROBE_SORT_CAPACITY = 8u;
+const uint PROJECTION_PROBE_TILE_CAPACITY = 9u;
+const uint PROJECTION_PROBE_POINT_COUNT = 10u;
+const uint PROJECTION_PROBE_GRID_WIDTH = 11u;
+const uint PROJECTION_PROBE_GRID_HEIGHT = 12u;
 
 float ease_out_cubic(in float x) {
 	float a = 1.0 - x;
@@ -107,7 +125,7 @@ vec3 get_color(in vec3 view_dir, in float sh_coefficients[16*3]) {
 				z = view_dir.z;
 	const float xx = x*x, yy = y*y, zz = z*z,
 			    xy = x*y, yz = y*z, xz = x*z;
-	return max(vec3(0), 0.5 
+	return max(vec3(0), 0.5
 		// Degree 0
 		+  SH_COEFFICIENTS(0) *   SH_C0
 		// Degree 1
@@ -164,12 +182,13 @@ void main() {
 	const uvec2 grid_size = (dims + TILE_SIZE - 1) / TILE_SIZE;
 
 	if (id >= uint(point_count)) return;
-	
+	atomicAdd(projection_probe[PROJECTION_PROBE_INVOCATIONS], 1u);
+
 	barrier();
 	uvec2 instance_data = splat_instance_data[id];
 	uint instance_id = instance_data.x;
 	uint unique_splat_index = instance_data.y;
-	
+
 	const Splat splat = splat_buffer[unique_splat_index];
 	mat4 model_matrix = instance_model_matrices[instance_id];
 
@@ -177,7 +196,7 @@ void main() {
 	float is_visible = model_matrix[0][3];
 	if (is_visible < 0.5) return;
 	model_matrix[0][3] = 0.0;
-	
+
 	// --- FRUSTUM CULLING ---
 	mat3 object_linear = mat3(model_matrix);
 	mat3 world_covariance = object_linear * DECODE_COVARIANCE(splat.covariance) * transpose(object_linear);
@@ -188,7 +207,7 @@ void main() {
 	if (any(lessThan(clip_pos.xyz, vec3(-view_bounds, 0.0))) || any(greaterThan(clip_pos.xyz, vec3(view_bounds, clip_pos.w)))) {
 		return;
 	}
-	
+
 	// --- GAUSSIAN PROJECTION ---
 	float splat_time = time - splat.time;
 	float time_factor = ease_out_cubic(clamp(splat_time, 0, 1));
@@ -208,17 +227,25 @@ void main() {
 	vec3 ndc_pos = clip_pos.xyz / clip_pos.w;
 	vec2 image_pos = ((ndc_pos.xy + 1.0)*0.5 - vec2(1,0.75)*(1.0 - time_factor)) * (dims - 1);
 
-	// We bias the radius (w/ base=2.5x standard deviation) such that low opacity splats cover 
+	// We bias the radius (w/ base=2.5x standard deviation) such that low opacity splats cover
 	// fewer screen tiles. This has the effect of making the image *slightly* brighter while
 	// minimizing perceptible tile artifacts.
 	float radius = pow(splat_opacity, 0.2) * 2.5*sqrt(max(eigenvalues.x, eigenvalues.y));
 	uvec4 rect_bounds = get_rect(image_pos, radius, grid_size);
 	uint num_tiles_touched = (rect_bounds.z - rect_bounds.x)*(rect_bounds.w - rect_bounds.y);
+	atomicAdd(projection_probe[PROJECTION_PROBE_VISIBLE_SPLATS], 1u);
+	atomicMax(projection_probe[PROJECTION_PROBE_MAX_TILES_TOUCHED], num_tiles_touched);
 
-	if (num_tiles_touched == 0 /*|| num_tiles_touched > grid_size.x*grid_size.y/3*/) return;
+	if (num_tiles_touched == 0 /*|| num_tiles_touched > grid_size.x*grid_size.y/3*/) {
+		atomicAdd(projection_probe[PROJECTION_PROBE_ZERO_TILE_SPLATS], 1u);
+		return;
+	}
 
+	atomicAdd(projection_probe[PROJECTION_PROBE_DUPLICATED_SPLATS], 1u);
+	atomicAdd(projection_probe[PROJECTION_PROBE_EMITTED_SORT_ELEMENTS], num_tiles_touched);
 	const uint buffer_size = atomicAdd(sort_buffer_size, num_tiles_touched);
 	uint sort_buffer_offset = buffer_size;
+	atomicMax(projection_probe[PROJECTION_PROBE_MAX_SORT_END], sort_buffer_offset + num_tiles_touched);
 	vec3 view_dir = normalize(world_pos.xyz - camera_pos);
 
 	RasterizeData data;
@@ -240,6 +267,7 @@ void main() {
 	for (uint y = rect_bounds.y; y < rect_bounds.w; ++y)
 	for (uint x = rect_bounds.x; x < rect_bounds.z; ++x) {
 		uint tile_id = y*grid_size.x + x;
+		atomicMax(projection_probe[PROJECTION_PROBE_MAX_TILE_ID], tile_id);
 		uint key = (tile_id << 16) | depth;
 		sort_keys[sort_buffer_offset] = key;
 		sort_values[sort_buffer_offset] = id;

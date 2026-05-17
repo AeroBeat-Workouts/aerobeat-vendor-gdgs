@@ -113,6 +113,10 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int) -> void:
 	state.context.device.buffer_clear(state.descriptors["histogram"].rid, 0, 4 + 4 * RADIX * 4)
 	state.context.device.buffer_clear(state.descriptors["tile_bounds"].rid, 0, state.tile_dims.x * state.tile_dims.y * 2 * 4)
 	state.context.device.buffer_update(state.descriptors["scratch_probe"].rid, 0, 4 * 4, PackedInt32Array([0, 0, 0, 0]).to_byte_array())
+	state.context.device.buffer_update(state.descriptors["projection_probe"].rid, 0, int(state.diagnostics.get("projection_probe_words", 0)) * 4, _projection_probe_seed_bytes(state, point_count))
+	state.context.device.buffer_update(state.descriptors["sort_keys"].rid, 0, 4 * 4, _uint_words_byte_array([0xDEADBEEF, 0xDEADBEEF, 0xDEADBEEF, 0xDEADBEEF]))
+	state.context.device.buffer_update(state.descriptors["sort_values"].rid, 0, 4 * 4, _uint_words_byte_array([0xDEADBEEF, 0xDEADBEEF, 0xDEADBEEF, 0xDEADBEEF]))
+	state.context.device.buffer_update(state.descriptors["culled_splats"].rid, 0, 4 * 4, _uint_words_byte_array([0x7FC00000, 0x7FC00000, 0x7FC00000, 0x7FC00000]))
 	_log_stage("prepared", state, point_count, {
 		"raster_stage_gate": _raster_stage_name(debug_raster_stage),
 		"projection_push_constant_bytes": state.camera_push_constants.size(),
@@ -250,8 +254,11 @@ func _assert_projection_preconditions(state, point_count: int) -> void:
 	assert(point_count > 0, "Projection point count must be positive")
 	assert(state.camera_push_constants.size() == int(state.diagnostics.get("projection_push_constant_bytes_expected", 128)), "Projection push constant must stay 128 bytes")
 	assert(int(state.camera_push_constants.size() / 4) == int(state.diagnostics.get("projection_push_constant_floats_expected", 32)), "Projection push constant must stay 32 floats")
+	assert(int(state.diagnostics.get("projection_splat_stride_bytes_expected", 0)) == 60 * 4, "Projection splat stride must stay 240 bytes")
+	assert(int(state.diagnostics.get("projection_culled_stride_bytes_expected", 0)) == 16 * 4, "Projection culled stride must stay 64 bytes")
 	assert(int(state.diagnostics.get("projection_group_count", 0)) == ceili(point_count / 256.0), "Projection group count drifted from expected point-count-derived launch")
 	assert(int(state.diagnostics.get("point_count_capacity", 0)) == point_count, "Projection state capacity no longer matches point count")
+	assert(state.descriptors.has("projection_probe") and state.descriptors["projection_probe"].rid.is_valid(), "Projection probe buffer must exist before projection dispatch")
 
 func _assert_boundary_preconditions(state, point_count: int) -> void:
 	assert(state.tile_dims.x * state.tile_dims.y > 0, "Boundary pass requires at least one tile")
@@ -267,18 +274,81 @@ func _projection_diagnostic_details(state, point_count: int) -> Dictionary:
 		"tile_bounds_capacity": state.diagnostics.get("tile_bounds_capacity", -1),
 		"sort_capacity": state.diagnostics.get("num_sort_elements_max", -1),
 		"max_tile_id": maxi(int(state.diagnostics.get("tile_bounds_capacity", 0)) - 1, -1),
+		"splat_stride_bytes": state.diagnostics.get("projection_splat_stride_bytes_expected", -1),
+		"culled_stride_bytes": state.diagnostics.get("projection_culled_stride_bytes_expected", -1),
 		"point_count": point_count
 	}
+
+func _projection_probe_seed_bytes(state, point_count: int) -> PackedByteArray:
+	return _uint_words_byte_array([
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		int(state.diagnostics.get("num_sort_elements_max", 0)),
+		int(state.diagnostics.get("tile_bounds_capacity", 0)),
+		point_count,
+		state.tile_dims.x,
+		state.tile_dims.y
+	])
+
+func _uint_words_byte_array(words: Array) -> PackedByteArray:
+	var bytes := PackedByteArray()
+	bytes.resize(words.size() * 4)
+	bytes.fill(0)
+	for i in range(words.size()):
+		bytes.encode_u32(i * 4, int(words[i]))
+	return bytes
+
+func _decode_u32_words(data: PackedByteArray) -> PackedInt32Array:
+	var word_count := int(data.size() / 4)
+	var words := PackedInt32Array()
+	words.resize(word_count)
+	for i in range(word_count):
+		words[i] = int(data.decode_u32(i * 4))
+	return words
+
+func _format_u32_words_hex(data: PackedByteArray) -> String:
+	var hex_words: Array[String] = []
+	for i in range(int(data.size() / 4)):
+		hex_words.append("0x%08x" % data.decode_u32(i * 4))
+	return ",".join(hex_words)
 
 func _log_projection_post_dispatch_evidence(state, point_count: int) -> void:
 	var histogram_data: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["histogram"].rid, 0, 4)
 	var sort_buffer_size: int = histogram_data.decode_u32(0) if histogram_data.size() >= 4 else -1
 	var sort_capacity := int(state.diagnostics.get("num_sort_elements_max", 0))
+	var projection_probe_data: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["projection_probe"].rid, 0, int(state.diagnostics.get("projection_probe_words", 0)) * 4)
+	var projection_probe_words: PackedInt32Array = _decode_u32_words(projection_probe_data)
+	var first_sort_keys: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["sort_keys"].rid, 0, 4 * 4)
+	var first_sort_values: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["sort_values"].rid, 0, 4 * 4)
+	var first_culled_words: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["culled_splats"].rid, 0, 4 * 4)
+	var probe_max_sort_end := projection_probe_words[4] if projection_probe_words.size() > 4 else -1
+	var probe_max_tile_id := projection_probe_words[5] if projection_probe_words.size() > 5 else -1
+	var probe_tile_capacity := projection_probe_words[9] if projection_probe_words.size() > 9 else -1
 	_log_stage("projection_post_dispatch", state, point_count, {
 		"histogram_bytes": histogram_data.size(),
 		"sort_buffer_size": sort_buffer_size,
 		"sort_capacity": sort_capacity,
 		"sort_within_capacity": str(sort_buffer_size >= 0 and sort_buffer_size <= sort_capacity),
+		"probe_invocations": projection_probe_words[0] if projection_probe_words.size() > 0 else -1,
+		"probe_visible_splats": projection_probe_words[1] if projection_probe_words.size() > 1 else -1,
+		"probe_duplicated_splats": projection_probe_words[2] if projection_probe_words.size() > 2 else -1,
+		"probe_emitted_sort_elements": projection_probe_words[3] if projection_probe_words.size() > 3 else -1,
+		"probe_max_sort_end": probe_max_sort_end,
+		"probe_max_sort_end_within_capacity": str(probe_max_sort_end >= 0 and probe_max_sort_end <= sort_capacity),
+		"probe_max_tile_id": probe_max_tile_id,
+		"probe_max_tile_id_within_capacity": str(probe_max_tile_id >= 0 and probe_max_tile_id < probe_tile_capacity),
+		"probe_max_tiles_touched": projection_probe_words[6] if projection_probe_words.size() > 6 else -1,
+		"probe_zero_tile_splats": projection_probe_words[7] if projection_probe_words.size() > 7 else -1,
+		"probe_words": str(projection_probe_words),
+		"first_sort_keys": _format_u32_words_hex(first_sort_keys),
+		"first_sort_values": _format_u32_words_hex(first_sort_values),
+		"first_culled_words": _format_u32_words_hex(first_culled_words),
 		"culled_buffer_valid": str(state.descriptors["culled_splats"].rid.is_valid()),
 		"sort_keys_valid": str(state.descriptors["sort_keys"].rid.is_valid()),
 		"sort_values_valid": str(state.descriptors["sort_values"].rid.is_valid()),

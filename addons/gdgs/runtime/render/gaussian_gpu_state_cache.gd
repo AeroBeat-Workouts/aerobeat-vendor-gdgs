@@ -14,6 +14,7 @@ const FLOATS_PER_SPLAT := 60
 const FLOATS_PER_CULLED_SPLAT := 16
 const BYTES_PER_FLOAT := 4
 const MAX_SORT_ELEMENTS_PER_SPLAT := 10
+const PROJECTION_PROBE_WORDS := 13
 
 const SHADER_PATH_PROJECTION := "res://addons/gdgs/runtime/render/shaders/compute/gsplat_projection.glsl"
 const SHADER_PATH_RADIX_UPSWEEP := "res://addons/gdgs/runtime/render/shaders/compute/radix_sort_upsweep.glsl"
@@ -119,6 +120,7 @@ func rebuild_gpu_state(state, point_count: int, unique_data_size: int, instance_
 	state.descriptors["tile_bounds"] = state.context.create_storage_buffer(state.tile_dims.x * state.tile_dims.y * 2 * 4)
 	state.descriptors["tile_splat_pos"] = state.context.create_storage_buffer(4 * 4)
 	state.descriptors["scratch_probe"] = state.context.create_storage_buffer(4 * 4)
+	state.descriptors["projection_probe"] = state.context.create_storage_buffer(PROJECTION_PROBE_WORDS * 4)
 	state.descriptors["render_texture"] = state.context.create_texture(state.texture_size, RenderingDevice.DATA_FORMAT_R32G32B32A32_SFLOAT)
 	state.descriptors["depth_texture"] = state.context.create_texture(state.texture_size, RenderingDevice.DATA_FORMAT_R32_SFLOAT)
 
@@ -131,7 +133,8 @@ func rebuild_gpu_state(state, point_count: int, unique_data_size: int, instance_
 		state.descriptors["grid_dimensions"],
 		state.descriptors["splat_instance_ids"],
 		state.descriptors["instance_transforms"],
-		state.descriptors["uniforms"]
+		state.descriptors["uniforms"],
+		state.descriptors["projection_probe"]
 	], state.shaders["projection"], 0)
 
 	var radix_upsweep_set: RID = state.context.create_descriptor_set([
@@ -191,6 +194,9 @@ func rebuild_gpu_state(state, point_count: int, unique_data_size: int, instance_
 		"projection_push_constant_bytes_expected": 128,
 		"projection_push_constant_floats_expected": 32,
 		"projection_push_constant_layout": "mat4 view + mat4 projection",
+		"projection_splat_stride_bytes_expected": FLOATS_PER_SPLAT * BYTES_PER_FLOAT,
+		"projection_culled_stride_bytes_expected": FLOATS_PER_CULLED_SPLAT * BYTES_PER_FLOAT,
+		"projection_probe_words": PROJECTION_PROBE_WORDS,
 		"scratch_probe_bytes": 16
 	}
 
@@ -201,6 +207,8 @@ func rebuild_gpu_state(state, point_count: int, unique_data_size: int, instance_
 func upload_splats(state, point_data_byte: PackedByteArray, splat_instance_ids_byte: PackedByteArray) -> void:
 	if state.context == null or point_data_byte.is_empty() or splat_instance_ids_byte.is_empty():
 		return
+	assert(point_data_byte.size() == int(state.diagnostics.get("point_count_capacity", 0)) * FLOATS_PER_SPLAT * BYTES_PER_FLOAT, "Projection splat upload size drifted from shader contract")
+	assert(splat_instance_ids_byte.size() == int(state.diagnostics.get("point_count_capacity", 0)) * 2 * BYTES_PER_FLOAT, "Projection instance-id upload size drifted from shader contract")
 	state.context.device.buffer_update(state.descriptors["splats"].rid, 0, point_data_byte.size(), point_data_byte)
 	state.context.device.buffer_update(state.descriptors["splat_instance_ids"].rid, 0, splat_instance_ids_byte.size(), splat_instance_ids_byte)
 	state.needs_splat_upload = false
@@ -208,6 +216,7 @@ func upload_splats(state, point_data_byte: PackedByteArray, splat_instance_ids_b
 func upload_instance_transforms(state, instance_transforms_byte: PackedByteArray) -> void:
 	if state.context == null or instance_transforms_byte.is_empty():
 		return
+	assert(instance_transforms_byte.size() == int(state.diagnostics.get("instance_count_capacity", 0)) * 16 * BYTES_PER_FLOAT, "Projection instance-transform upload size drifted from shader contract")
 	state.context.device.buffer_update(state.descriptors["instance_transforms"].rid, 0, instance_transforms_byte.size(), instance_transforms_byte)
 	state.needs_instance_upload = false
 
