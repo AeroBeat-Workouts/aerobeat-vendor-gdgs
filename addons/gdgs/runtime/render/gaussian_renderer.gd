@@ -12,7 +12,8 @@ enum RasterDebugStage {
 	PROJECTION_ONLY,
 	RADIX_ONLY,
 	BOUNDARIES_ONLY,
-	RENDER_ONLY
+	RENDER_ONLY,
+	SCRATCH_ONLY
 }
 
 var _once_logs := {}
@@ -96,6 +97,8 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int) -> void:
 	if state.context == null:
 		return
 
+	_assert_projection_preconditions(state, point_count)
+
 	var uniforms := RenderingDeviceContext.create_push_constant([
 		state.camera_world_position.x,
 		state.camera_world_position.y,
@@ -109,17 +112,39 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int) -> void:
 	state.context.device.buffer_update(state.descriptors["uniforms"].rid, 0, 8 * 4, uniforms)
 	state.context.device.buffer_clear(state.descriptors["histogram"].rid, 0, 4 + 4 * RADIX * 4)
 	state.context.device.buffer_clear(state.descriptors["tile_bounds"].rid, 0, state.tile_dims.x * state.tile_dims.y * 2 * 4)
-	_log_stage("prepared", state, point_count, {"raster_stage_gate": _raster_stage_name(debug_raster_stage)})
+	state.context.device.buffer_update(state.descriptors["scratch_probe"].rid, 0, 4 * 4, PackedInt32Array([0, 0, 0, 0]).to_byte_array())
+	_log_stage("prepared", state, point_count, {
+		"raster_stage_gate": _raster_stage_name(debug_raster_stage),
+		"projection_push_constant_bytes": state.camera_push_constants.size(),
+		"projection_push_constant_layout": str(state.diagnostics.get("projection_push_constant_layout", "unknown")),
+		"projection_group_count": state.diagnostics.get("projection_group_count", -1),
+		"tile_bounds_capacity": state.diagnostics.get("tile_bounds_capacity", -1),
+		"sort_capacity": state.diagnostics.get("num_sort_elements_max", -1)
+	})
 
 	if debug_raster_stage == RasterDebugStage.PREPARED_NO_DISPATCH:
 		_log_stage("prepared_no_dispatch_gate", state, point_count)
 		return
 
+	if debug_raster_stage == RasterDebugStage.SCRATCH_ONLY:
+		var scratch_compute_list: int = state.context.compute_list_begin()
+		_log_stage("scratch_dispatch_begin", state, point_count, {"scratch_probe_bytes": state.diagnostics.get("scratch_probe_bytes", -1)})
+		state.pipelines["gsplat_scratch_probe"].call(state.context, scratch_compute_list, PackedByteArray())
+		state.context.compute_list_end()
+		_log_scratch_probe_readback(state, point_count)
+		_log_stage("scratch_only_gate", state, point_count)
+		return
+
 	var compute_list: int = state.context.compute_list_begin()
-	_log_stage("projection_begin", state, point_count)
+	_log_stage("projection_begin", state, point_count, _projection_diagnostic_details(state, point_count))
 	state.pipelines["gsplat_projection"].call(state.context, compute_list, state.camera_push_constants)
-	_log_stage("projection_end", state, point_count, {"push_constant_bytes": state.camera_push_constants.size()})
+	_log_stage("projection_end", state, point_count, {
+		"push_constant_bytes": state.camera_push_constants.size(),
+		"push_constant_layout": str(state.diagnostics.get("projection_push_constant_layout", "unknown")),
+		"projection_group_count": state.diagnostics.get("projection_group_count", -1)
+	})
 	state.context.compute_list_end()
+	_log_projection_post_dispatch_evidence(state, point_count)
 
 	if debug_raster_stage == RasterDebugStage.PROJECTION_ONLY:
 		_log_stage("projection_only_gate", state, point_count)
@@ -129,6 +154,8 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int) -> void:
 	for radix_shift_pass in range(4):
 		var radix_input_offset := point_count * MAX_SORT_ELEMENTS_PER_SPLAT * (radix_shift_pass % 2)
 		var radix_output_offset := point_count * MAX_SORT_ELEMENTS_PER_SPLAT * (1 - (radix_shift_pass % 2))
+		assert(radix_input_offset < int(state.diagnostics.get("num_sort_elements_max", 0)) * 2, "Radix input offset exceeds allocated sort capacity")
+		assert(radix_output_offset < int(state.diagnostics.get("num_sort_elements_max", 0)) * 2, "Radix output offset exceeds allocated sort capacity")
 		_log_stage(
 			"radix_pass_begin",
 			state,
@@ -178,7 +205,12 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int) -> void:
 		return
 
 	compute_list = state.context.compute_list_begin()
-	_log_stage("boundaries_begin", state, point_count, {"tile_dims": str(state.tile_dims)})
+	_assert_boundary_preconditions(state, point_count)
+	_log_stage("boundaries_begin", state, point_count, {
+		"tile_dims": str(state.tile_dims),
+		"tile_bounds_capacity": state.diagnostics.get("tile_bounds_capacity", -1),
+		"sort_capacity": state.diagnostics.get("num_sort_elements_max", -1)
+	})
 	state.pipelines["gsplat_boundaries"].call(state.context, compute_list, PackedByteArray())
 	_log_stage("boundaries_end", state, point_count, {"tile_dims": str(state.tile_dims)})
 	state.context.compute_list_end()
@@ -203,6 +235,59 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int) -> void:
 		return
 
 	_log_stage("rasterize_state_return", state, point_count)
+
+func _assert_projection_preconditions(state, point_count: int) -> void:
+	assert(state.texture_size.x > 0 and state.texture_size.y > 0, "Projection output size must stay positive")
+	assert(state.tile_dims.x > 0 and state.tile_dims.y > 0, "Projection tile dims must stay positive")
+	assert(state.tile_dims == (state.texture_size + Vector2i(15, 15)) / 16, "Projection tile dims do not match texture size")
+	assert(point_count > 0, "Projection point count must be positive")
+	assert(state.camera_push_constants.size() == int(state.diagnostics.get("projection_push_constant_bytes_expected", 128)), "Projection push constant must stay 128 bytes")
+	assert(int(state.camera_push_constants.size() / 4) == int(state.diagnostics.get("projection_push_constant_floats_expected", 32)), "Projection push constant must stay 32 floats")
+	assert(int(state.diagnostics.get("projection_group_count", 0)) == ceili(point_count / 256.0), "Projection group count drifted from expected point-count-derived launch")
+	assert(int(state.diagnostics.get("point_count_capacity", 0)) == point_count, "Projection state capacity no longer matches point count")
+
+func _assert_boundary_preconditions(state, point_count: int) -> void:
+	assert(state.tile_dims.x * state.tile_dims.y > 0, "Boundary pass requires at least one tile")
+	assert(int(state.diagnostics.get("tile_bounds_capacity", 0)) == state.tile_dims.x * state.tile_dims.y, "Tile bounds capacity must match tile grid")
+	assert(int(state.diagnostics.get("num_sort_elements_max", 0)) == point_count * MAX_SORT_ELEMENTS_PER_SPLAT, "Sort capacity drifted from point-count bounds assumption")
+
+func _projection_diagnostic_details(state, point_count: int) -> Dictionary:
+	return {
+		"push_constant_bytes": state.camera_push_constants.size(),
+		"push_constant_layout": str(state.diagnostics.get("projection_push_constant_layout", "unknown")),
+		"push_constant_floats": int(state.camera_push_constants.size() / 4),
+		"expected_group_count": state.diagnostics.get("projection_group_count", -1),
+		"tile_bounds_capacity": state.diagnostics.get("tile_bounds_capacity", -1),
+		"sort_capacity": state.diagnostics.get("num_sort_elements_max", -1),
+		"max_tile_id": maxi(int(state.diagnostics.get("tile_bounds_capacity", 0)) - 1, -1),
+		"point_count": point_count
+	}
+
+func _log_projection_post_dispatch_evidence(state, point_count: int) -> void:
+	var histogram_data: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["histogram"].rid, 0, 4)
+	var sort_buffer_size: int = histogram_data.decode_u32(0) if histogram_data.size() >= 4 else -1
+	var sort_capacity := int(state.diagnostics.get("num_sort_elements_max", 0))
+	_log_stage("projection_post_dispatch", state, point_count, {
+		"histogram_bytes": histogram_data.size(),
+		"sort_buffer_size": sort_buffer_size,
+		"sort_capacity": sort_capacity,
+		"sort_within_capacity": str(sort_buffer_size >= 0 and sort_buffer_size <= sort_capacity),
+		"culled_buffer_valid": str(state.descriptors["culled_splats"].rid.is_valid()),
+		"sort_keys_valid": str(state.descriptors["sort_keys"].rid.is_valid()),
+		"sort_values_valid": str(state.descriptors["sort_values"].rid.is_valid()),
+		"histogram_valid": str(state.descriptors["histogram"].rid.is_valid())
+	})
+
+func _log_scratch_probe_readback(state, point_count: int) -> void:
+	var scratch_data: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["scratch_probe"].rid, 0, 16)
+	var scratch_words: Array[String] = []
+	for i in range(int(scratch_data.size() / 4)):
+		scratch_words.append("0x%08x" % scratch_data.decode_u32(i * 4))
+	_log_stage("scratch_post_dispatch", state, point_count, {
+		"scratch_words": ",".join(scratch_words),
+		"scratch_probe_valid": str(state.descriptors["scratch_probe"].rid.is_valid()),
+		"histogram_valid": str(state.descriptors["histogram"].rid.is_valid())
+	})
 
 func _update_camera_from_transform(state, camera_transform: Transform3D, camera_projection: Projection) -> void:
 	var view := Projection(camera_transform.affine_inverse())
@@ -252,5 +337,7 @@ func _raster_stage_name(value: int) -> String:
 			return "boundaries_only"
 		RasterDebugStage.RENDER_ONLY:
 			return "render_only"
+		RasterDebugStage.SCRATCH_ONLY:
+			return "scratch_only"
 		_:
 			return "unknown(%d)" % value

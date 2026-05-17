@@ -21,6 +21,7 @@ const SHADER_PATH_RADIX_SPINE := "res://addons/gdgs/runtime/render/shaders/compu
 const SHADER_PATH_RADIX_DOWNSWEEP := "res://addons/gdgs/runtime/render/shaders/compute/radix_sort_downsweep.glsl"
 const SHADER_PATH_BOUNDARIES := "res://addons/gdgs/runtime/render/shaders/compute/gsplat_boundaries.glsl"
 const SHADER_PATH_RENDER := "res://addons/gdgs/runtime/render/shaders/compute/gsplat_render.glsl"
+const SHADER_PATH_SCRATCH_PROBE := "res://addons/gdgs/runtime/render/shaders/compute/gsplat_scratch_probe.glsl"
 
 class RenderState:
 	extends RefCounted
@@ -32,6 +33,7 @@ class RenderState:
 	var camera_push_constants := PackedByteArray()
 	var camera_world_position := Vector3.ZERO
 	var depth_capture_alpha := 0.5
+	var diagnostics := {}
 	var needs_gpu_rebuild := true
 	var needs_splat_upload := false
 	var needs_instance_upload := false
@@ -90,6 +92,7 @@ func rebuild_gpu_state(state, point_count: int, unique_data_size: int, instance_
 	state.shaders["radix_downsweep"] = state.context.load_shader(SHADER_PATH_RADIX_DOWNSWEEP)
 	state.shaders["boundaries"] = state.context.load_shader(SHADER_PATH_BOUNDARIES)
 	state.shaders["render"] = state.context.load_shader(SHADER_PATH_RENDER)
+	state.shaders["scratch_probe"] = state.context.load_shader(SHADER_PATH_SCRATCH_PROBE)
 
 	var num_sort_elements_max := point_count * MAX_SORT_ELEMENTS_PER_SPLAT
 	var num_partitions := (num_sort_elements_max + PARTITION_SIZE - 1) / PARTITION_SIZE
@@ -114,6 +117,7 @@ func rebuild_gpu_state(state, point_count: int, unique_data_size: int, instance_
 	state.descriptors["uniforms"] = state.context.create_uniform_buffer(8 * 4)
 	state.descriptors["tile_bounds"] = state.context.create_storage_buffer(state.tile_dims.x * state.tile_dims.y * 2 * 4)
 	state.descriptors["tile_splat_pos"] = state.context.create_storage_buffer(4 * 4)
+	state.descriptors["scratch_probe"] = state.context.create_storage_buffer(4 * 4)
 	state.descriptors["render_texture"] = state.context.create_texture(state.texture_size, RenderingDevice.DATA_FORMAT_R32G32B32A32_SFLOAT)
 	state.descriptors["depth_texture"] = state.context.create_texture(state.texture_size, RenderingDevice.DATA_FORMAT_R32_SFLOAT)
 
@@ -159,12 +163,34 @@ func rebuild_gpu_state(state, point_count: int, unique_data_size: int, instance_
 		state.descriptors["depth_texture"]
 	], state.shaders["render"], 0)
 
+	var scratch_probe_set: RID = state.context.create_descriptor_set([
+		state.descriptors["scratch_probe"]
+	], state.shaders["scratch_probe"], 0)
+
 	state.pipelines["gsplat_projection"] = state.context.create_pipeline("gsplat_projection", [ceili(point_count / 256.0), 1, 1], [projection_set], state.shaders["projection"])
 	state.pipelines["radix_sort_upsweep"] = state.context.create_pipeline("radix_sort_upsweep", [num_partitions, 1, 1], [radix_upsweep_set], state.shaders["radix_upsweep"])
 	state.pipelines["radix_sort_spine"] = state.context.create_pipeline("radix_sort_spine", [RADIX, 1, 1], [radix_spine_set], state.shaders["radix_spine"])
 	state.pipelines["radix_sort_downsweep"] = state.context.create_pipeline("radix_sort_downsweep", [num_partitions, 1, 1], [radix_downsweep_set], state.shaders["radix_downsweep"])
 	state.pipelines["gsplat_boundaries"] = state.context.create_pipeline("gsplat_boundaries", [max_boundary_workgroups, 1, 1], [boundaries_set], state.shaders["boundaries"])
 	state.pipelines["gsplat_render"] = state.context.create_pipeline("gsplat_render", [state.tile_dims.x, state.tile_dims.y, 1], [render_set], state.shaders["render"])
+	state.pipelines["gsplat_scratch_probe"] = state.context.create_pipeline("gsplat_scratch_probe", [1, 1, 1], [scratch_probe_set], state.shaders["scratch_probe"])
+
+	state.diagnostics = {
+		"point_count_capacity": point_count,
+		"instance_count_capacity": instance_count,
+		"texture_size": state.texture_size,
+		"tile_dims": state.tile_dims,
+		"tile_count": state.tile_dims.x * state.tile_dims.y,
+		"tile_bounds_capacity": state.tile_dims.x * state.tile_dims.y,
+		"num_sort_elements_max": num_sort_elements_max,
+		"num_partitions": num_partitions,
+		"max_boundary_workgroups": max_boundary_workgroups,
+		"projection_group_count": ceili(point_count / 256.0),
+		"projection_push_constant_bytes_expected": 128,
+		"projection_push_constant_floats_expected": 32,
+		"projection_push_constant_layout": "mat4 view + mat4 projection",
+		"scratch_probe_bytes": 16
+	}
 
 	state.needs_gpu_rebuild = false
 	state.needs_splat_upload = true

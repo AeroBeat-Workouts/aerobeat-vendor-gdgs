@@ -46,7 +46,7 @@ enum CompositorDebugStage {
 @export_enum("Composite", "GS Alpha", "GS Color", "GS Depth", "Scene Depth", "Depth Reject Mask") var debug_view: int = DebugView.COMPOSITE
 @export var ignore_scene_depth_in_composite := false
 @export_enum("Full Pipeline", "Callback Only", "Raster Only (No Writeback)") var debug_compositor_stage: int = CompositorDebugStage.FULL_PIPELINE
-@export_enum("Full Pipeline", "Prepared / No Dispatch", "Projection Only", "Radix Only", "Boundaries Only", "Render Only") var debug_raster_stage: int = 0
+@export_enum("Full Pipeline", "Prepared / No Dispatch", "Projection Only", "Radix Only", "Boundaries Only", "Render Only", "Scratch Dispatch Only") var debug_raster_stage: int = 0
 
 var rd: RenderingDevice
 var shader: RID
@@ -408,6 +408,8 @@ func _raster_stage_name(value: int) -> String:
 			return "boundaries_only"
 		GaussianRenderer.RasterDebugStage.RENDER_ONLY:
 			return "render_only"
+		GaussianRenderer.RasterDebugStage.SCRATCH_ONLY:
+			return "scratch_only"
 		_:
 			return "Unknown(%d)" % value
 
