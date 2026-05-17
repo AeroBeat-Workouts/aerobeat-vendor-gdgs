@@ -15,6 +15,7 @@ const FLOATS_PER_CULLED_SPLAT := 16
 const BYTES_PER_FLOAT := 4
 const MAX_SORT_ELEMENTS_PER_SPLAT := 10
 const PROJECTION_PROBE_WORDS := 24
+const SCRATCH_PROBE_WORDS := 8
 
 const SHADER_PATH_PROJECTION := "res://addons/gdgs/runtime/render/shaders/compute/gsplat_projection.glsl"
 const SHADER_PATH_RADIX_UPSWEEP := "res://addons/gdgs/runtime/render/shaders/compute/radix_sort_upsweep.glsl"
@@ -35,6 +36,7 @@ class RenderState:
 	var camera_world_position := Vector3.ZERO
 	var depth_capture_alpha := 0.5
 	var diagnostics := {}
+	var last_projection_dispatch_serial := 0
 	var needs_gpu_rebuild := true
 	var needs_splat_upload := false
 	var needs_instance_upload := false
@@ -51,10 +53,12 @@ func has_render_states() -> bool:
 	return not _render_states.is_empty()
 
 func request_cleanup() -> void:
+	print("[gdgs] gpu_state_cache request_cleanup pending=%s active_states=%d" % [str(_pending_gpu_cleanup), _render_states.size()])
 	_pending_gpu_cleanup = true
 
 func flush_pending_cleanup() -> void:
 	if _pending_gpu_cleanup:
+		print("[gdgs] gpu_state_cache flush_pending_cleanup active_states=%d" % _render_states.size())
 		cleanup_all()
 
 func get_or_create_render_state(texture_size: Vector2i):
@@ -119,7 +123,7 @@ func rebuild_gpu_state(state, point_count: int, unique_data_size: int, instance_
 	state.descriptors["uniforms"] = state.context.create_uniform_buffer(8 * 4)
 	state.descriptors["tile_bounds"] = state.context.create_storage_buffer(state.tile_dims.x * state.tile_dims.y * 2 * 4)
 	state.descriptors["tile_splat_pos"] = state.context.create_storage_buffer(4 * 4)
-	state.descriptors["scratch_probe"] = state.context.create_storage_buffer(4 * 4)
+	state.descriptors["scratch_probe"] = state.context.create_storage_buffer(SCRATCH_PROBE_WORDS * 4)
 	state.descriptors["projection_probe"] = state.context.create_storage_buffer(PROJECTION_PROBE_WORDS * 4)
 	state.descriptors["render_texture"] = state.context.create_texture(state.texture_size, RenderingDevice.DATA_FORMAT_R32G32B32A32_SFLOAT)
 	state.descriptors["depth_texture"] = state.context.create_texture(state.texture_size, RenderingDevice.DATA_FORMAT_R32_SFLOAT)
@@ -134,7 +138,8 @@ func rebuild_gpu_state(state, point_count: int, unique_data_size: int, instance_
 		state.descriptors["splat_instance_ids"],
 		state.descriptors["instance_transforms"],
 		state.descriptors["uniforms"],
-		state.descriptors["projection_probe"]
+		state.descriptors["projection_probe"],
+		state.descriptors["scratch_probe"]
 	], state.shaders["projection"], 0)
 
 	var radix_upsweep_set: RID = state.context.create_descriptor_set([
@@ -197,7 +202,8 @@ func rebuild_gpu_state(state, point_count: int, unique_data_size: int, instance_
 		"projection_splat_stride_bytes_expected": FLOATS_PER_SPLAT * BYTES_PER_FLOAT,
 		"projection_culled_stride_bytes_expected": FLOATS_PER_CULLED_SPLAT * BYTES_PER_FLOAT,
 		"projection_probe_words": PROJECTION_PROBE_WORDS,
-		"scratch_probe_bytes": 16
+		"scratch_probe_words": SCRATCH_PROBE_WORDS,
+		"scratch_probe_bytes": SCRATCH_PROBE_WORDS * 4
 	}
 
 	state.needs_gpu_rebuild = false
@@ -224,6 +230,12 @@ func cleanup_state(state) -> void:
 	if state == null:
 		return
 	if state.context != null:
+		print("[gdgs] gpu_state_cache cleanup_state texture_size=%s last_projection_dispatch_serial=%d projection_probe_valid=%s scratch_probe_valid=%s" % [
+			str(state.texture_size),
+			int(state.last_projection_dispatch_serial),
+			str(state.descriptors.has("projection_probe") and state.descriptors["projection_probe"].rid.is_valid()),
+			str(state.descriptors.has("scratch_probe") and state.descriptors["scratch_probe"].rid.is_valid())
+		])
 		state.context.free()
 		state.context = null
 	state.shaders.clear()

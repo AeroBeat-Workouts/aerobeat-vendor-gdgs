@@ -31,6 +31,21 @@ const PROJECTION_PROBE_NON_FINITE_FAILURE_COUNT := 21
 const PROJECTION_PROBE_SORT_OVERFLOW_GUARD_COUNT := 22
 const PROJECTION_PROBE_TILE_GUARD_COUNT := 23
 
+const SCRATCH_PROBE_SIGNATURE_WORD0 := 0
+const SCRATCH_PROBE_SIGNATURE_WORD1 := 1
+const SCRATCH_PROBE_SIGNATURE_WORD2 := 2
+const SCRATCH_PROBE_SIGNATURE_WORD3 := 3
+const SCRATCH_PROBE_PROJECTION_INVOCATIONS := 4
+const SCRATCH_PROBE_PROJECTION_VISIBLE_SPLATS := 5
+const SCRATCH_PROBE_PROJECTION_STAGE_BITS := 6
+const SCRATCH_PROBE_PROJECTION_MAX_REQUESTED_SORT_END := 7
+
+const SCRATCH_PROJECTION_STAGE_ENTRY := 1 << 0
+const SCRATCH_PROJECTION_STAGE_VISIBLE := 1 << 1
+const SCRATCH_PROJECTION_STAGE_CULLED_WRITE := 1 << 2
+const SCRATCH_PROJECTION_STAGE_SORT_RESERVED := 1 << 3
+const SCRATCH_PROJECTION_STAGE_SORT_WRITTEN := 1 << 4
+
 const PROJECTION_ERROR_FLAG_NON_FINITE := 1 << 0
 const PROJECTION_ERROR_FLAG_SORT_OVERFLOW := 1 << 1
 const PROJECTION_ERROR_FLAG_TILE_OOB := 1 << 2
@@ -68,7 +83,8 @@ enum ProjectionReadbackCheckpoint {
 	PROJECTION_PROBE_ONLY,
 	SORT_KEYS_SENTINEL_ONLY,
 	SORT_VALUES_SENTINEL_ONLY,
-	CULLED_SPLATS_SENTINEL_ONLY
+	CULLED_SPLATS_SENTINEL_ONLY,
+	SCRATCH_PROJECTION_MIRROR_ONLY
 }
 
 var _once_logs := {}
@@ -172,7 +188,7 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int, debug_pr
 	state.context.device.buffer_update(state.descriptors["uniforms"].rid, 0, 8 * 4, uniforms)
 	state.context.device.buffer_clear(state.descriptors["histogram"].rid, 0, 4 + 4 * RADIX * 4)
 	state.context.device.buffer_clear(state.descriptors["tile_bounds"].rid, 0, state.tile_dims.x * state.tile_dims.y * 2 * 4)
-	state.context.device.buffer_update(state.descriptors["scratch_probe"].rid, 0, 4 * 4, PackedInt32Array([0, 0, 0, 0]).to_byte_array())
+	state.context.device.buffer_update(state.descriptors["scratch_probe"].rid, 0, int(state.diagnostics.get("scratch_probe_words", 0)) * 4, _scratch_probe_seed_bytes())
 	state.context.device.buffer_update(state.descriptors["projection_probe"].rid, 0, int(state.diagnostics.get("projection_probe_words", 0)) * 4, _projection_probe_seed_bytes(state, point_count))
 	state.context.device.buffer_update(state.descriptors["sort_keys"].rid, 0, 4 * 4, _uint_words_byte_array([0xDEADBEEF, 0xDEADBEEF, 0xDEADBEEF, 0xDEADBEEF]))
 	state.context.device.buffer_update(state.descriptors["sort_values"].rid, 0, 4 * 4, _uint_words_byte_array([0xDEADBEEF, 0xDEADBEEF, 0xDEADBEEF, 0xDEADBEEF]))
@@ -207,10 +223,15 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int, debug_pr
 		_log_stage("scratch_only_gate", state, point_count)
 		return
 
+	state.last_projection_dispatch_serial += 1
+	var projection_dispatch_serial := int(state.last_projection_dispatch_serial)
 	var compute_list: int = state.context.compute_list_begin()
-	_log_stage("projection_begin", state, point_count, _projection_diagnostic_details(state, point_count))
+	var projection_details := _projection_diagnostic_details(state, point_count)
+	projection_details["projection_dispatch_serial"] = projection_dispatch_serial
+	_log_stage("projection_begin", state, point_count, projection_details)
 	state.pipelines["gsplat_projection"].call(state.context, compute_list, state.camera_push_constants)
 	_log_stage("projection_end", state, point_count, {
+		"projection_dispatch_serial": projection_dispatch_serial,
 		"push_constant_bytes": state.camera_push_constants.size(),
 		"push_constant_layout": str(state.diagnostics.get("projection_push_constant_layout", "unknown")),
 		"projection_group_count": state.diagnostics.get("projection_group_count", -1)
@@ -368,6 +389,18 @@ func _projection_probe_seed_bytes(state, point_count: int) -> PackedByteArray:
 		0
 	])
 
+func _scratch_probe_seed_bytes() -> PackedByteArray:
+	return _uint_words_byte_array([
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0
+	])
+
 func _uint_words_byte_array(words: Array) -> PackedByteArray:
 	var bytes := PackedByteArray()
 	bytes.resize(words.size() * 4)
@@ -490,6 +523,8 @@ func _run_projection_post_dispatch_checkpoint(state, point_count: int, checkpoin
 			_log_projection_sort_values_sentinel_readback(state, point_count)
 		ProjectionReadbackCheckpoint.CULLED_SPLATS_SENTINEL_ONLY:
 			_log_projection_culled_splats_sentinel_readback(state, point_count)
+		ProjectionReadbackCheckpoint.SCRATCH_PROJECTION_MIRROR_ONLY:
+			_log_projection_scratch_mirror_readback(state, point_count)
 		_:
 			_log_stage("projection_post_dispatch_checkpoint_unknown", state, point_count, {
 				"checkpoint": checkpoint_name
@@ -519,6 +554,13 @@ func _log_projection_probe_readback(state, point_count: int) -> void:
 	var projection_probe_data: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["projection_probe"].rid, 0, int(state.diagnostics.get("projection_probe_words", 0)) * 4)
 	var projection_probe_words: PackedInt32Array = _decode_u32_words(projection_probe_data)
 	_log_stage("projection_readback_projection_probe_end", state, point_count, _projection_probe_log_fields(projection_probe_words))
+
+func _log_projection_scratch_mirror_readback(state, point_count: int) -> void:
+	_log_stage("projection_readback_scratch_mirror_begin", state, point_count, {
+		"scratch_probe_valid": str(state.descriptors["scratch_probe"].rid.is_valid())
+	})
+	var scratch_data: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["scratch_probe"].rid, 0, int(state.diagnostics.get("scratch_probe_words", 0)) * 4)
+	_log_stage("projection_readback_scratch_mirror_end", state, point_count, _scratch_probe_log_fields(scratch_data))
 
 func _log_projection_sort_keys_sentinel_readback(state, point_count: int) -> void:
 	_log_stage("projection_readback_sort_keys_sentinel_begin", state, point_count, {
@@ -554,6 +596,7 @@ func _log_projection_post_dispatch_evidence(state, point_count: int) -> void:
 	var sort_capacity := int(state.diagnostics.get("num_sort_elements_max", 0))
 	var projection_probe_data: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["projection_probe"].rid, 0, int(state.diagnostics.get("projection_probe_words", 0)) * 4)
 	var projection_probe_words: PackedInt32Array = _decode_u32_words(projection_probe_data)
+	var scratch_data: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["scratch_probe"].rid, 0, int(state.diagnostics.get("scratch_probe_words", 0)) * 4)
 	var first_sort_keys: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["sort_keys"].rid, 0, 4 * 4)
 	var first_sort_values: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["sort_values"].rid, 0, 4 * 4)
 	var first_culled_words: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["culled_splats"].rid, 0, 4 * 4)
@@ -568,28 +611,48 @@ func _log_projection_post_dispatch_evidence(state, point_count: int) -> void:
 		"culled_buffer_valid": str(state.descriptors["culled_splats"].rid.is_valid()),
 		"sort_keys_valid": str(state.descriptors["sort_keys"].rid.is_valid()),
 		"sort_values_valid": str(state.descriptors["sort_values"].rid.is_valid()),
-		"histogram_valid": str(state.descriptors["histogram"].rid.is_valid())
+		"histogram_valid": str(state.descriptors["histogram"].rid.is_valid()),
+		"scratch_probe_valid": str(state.descriptors["scratch_probe"].rid.is_valid())
 	}
 	extras.merge(_projection_probe_log_fields(projection_probe_words))
+	extras.merge(_scratch_probe_log_fields(scratch_data))
 	_log_stage("projection_post_dispatch", state, point_count, extras)
 	_log_stage("projection_post_dispatch_full_package_end", state, point_count)
 
-func _log_scratch_probe_readback(state, point_count: int) -> void:
-	var scratch_data: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["scratch_probe"].rid, 0, 16)
-	var scratch_words: Array[String] = []
+func _scratch_probe_log_fields(scratch_data: PackedByteArray) -> Dictionary:
+	var scratch_words_hex: Array[String] = []
 	for i in range(int(scratch_data.size() / 4)):
-		scratch_words.append("0x%08x" % scratch_data.decode_u32(i * 4))
+		scratch_words_hex.append("0x%08x" % scratch_data.decode_u32(i * 4))
+	var scratch_words := _decode_u32_words(scratch_data)
 	var scratch_signature_ok := scratch_words.size() >= 4 \
-		and scratch_words[0] == "0x47534744" \
-		and scratch_words[1] == "0x00000001" \
-		and scratch_words[2] == "0x00000001" \
-		and scratch_words[3] == "0x5a5aa5a5"
-	_log_stage("scratch_post_dispatch", state, point_count, {
-		"scratch_words": ",".join(scratch_words),
+		and scratch_words_hex[SCRATCH_PROBE_SIGNATURE_WORD0] == "0x47534744" \
+		and scratch_words_hex[SCRATCH_PROBE_SIGNATURE_WORD1] == "0x00000001" \
+		and scratch_words_hex[SCRATCH_PROBE_SIGNATURE_WORD2] == "0x00000001" \
+		and scratch_words_hex[SCRATCH_PROBE_SIGNATURE_WORD3] == "0x5a5aa5a5"
+	var projection_stage_bits := _probe_word(scratch_words, SCRATCH_PROBE_PROJECTION_STAGE_BITS, 0)
+	return {
+		"scratch_words": ",".join(scratch_words_hex),
 		"scratch_signature_ok": str(scratch_signature_ok),
+		"scratch_projection_invocations": _probe_word(scratch_words, SCRATCH_PROBE_PROJECTION_INVOCATIONS, 0),
+		"scratch_projection_visible_splats": _probe_word(scratch_words, SCRATCH_PROBE_PROJECTION_VISIBLE_SPLATS, 0),
+		"scratch_projection_stage_bits": projection_stage_bits,
+		"scratch_projection_stage_bits_hex": "0x%08x" % (projection_stage_bits & 0xFFFFFFFF),
+		"scratch_projection_entered": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_ENTRY) != 0),
+		"scratch_projection_visible_path": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_VISIBLE) != 0),
+		"scratch_projection_culled_write": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_CULLED_WRITE) != 0),
+		"scratch_projection_sort_reserved": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_SORT_RESERVED) != 0),
+		"scratch_projection_sort_written": str((projection_stage_bits & SCRATCH_PROJECTION_STAGE_SORT_WRITTEN) != 0),
+		"scratch_projection_max_requested_sort_end": _probe_word(scratch_words, SCRATCH_PROBE_PROJECTION_MAX_REQUESTED_SORT_END, 0)
+	}
+
+func _log_scratch_probe_readback(state, point_count: int) -> void:
+	var scratch_data: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["scratch_probe"].rid, 0, int(state.diagnostics.get("scratch_probe_words", 0)) * 4)
+	var extras := _scratch_probe_log_fields(scratch_data)
+	extras.merge({
 		"scratch_probe_valid": str(state.descriptors["scratch_probe"].rid.is_valid()),
 		"histogram_valid": str(state.descriptors["histogram"].rid.is_valid())
 	})
+	_log_stage("scratch_post_dispatch", state, point_count, extras)
 
 func _update_camera_from_transform(state, camera_transform: Transform3D, camera_projection: Projection) -> void:
 	var view := Projection(camera_transform.affine_inverse())
@@ -660,5 +723,7 @@ func _projection_readback_checkpoint_name(value: int) -> String:
 			return "sort_values_sentinel_only"
 		ProjectionReadbackCheckpoint.CULLED_SPLATS_SENTINEL_ONLY:
 			return "culled_splats_sentinel_only"
+		ProjectionReadbackCheckpoint.SCRATCH_PROJECTION_MIRROR_ONLY:
+			return "scratch_projection_mirror_only"
 		_:
 			return "unknown(%d)" % value

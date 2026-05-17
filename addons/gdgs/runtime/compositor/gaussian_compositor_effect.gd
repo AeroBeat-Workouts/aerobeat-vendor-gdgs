@@ -47,7 +47,7 @@ enum CompositorDebugStage {
 @export var ignore_scene_depth_in_composite := false
 @export_enum("Full Pipeline", "Callback Only", "Raster Only (No Writeback)") var debug_compositor_stage: int = CompositorDebugStage.FULL_PIPELINE
 @export_enum("Full Pipeline", "Prepared / No Dispatch", "Projection Only", "Radix Only", "Boundaries Only", "Render Only", "Scratch Dispatch Only") var debug_raster_stage: int = 0
-@export_enum("Full Package", "Disabled / No Readback", "Histogram Header Only", "Projection Probe Only", "Sort Keys Sentinel Only", "Sort Values Sentinel Only", "Culled Splats Sentinel Only") var debug_projection_readback_checkpoint: int = 0
+@export_enum("Full Package", "Disabled / No Readback", "Histogram Header Only", "Projection Probe Only", "Sort Keys Sentinel Only", "Sort Values Sentinel Only", "Culled Splats Sentinel Only", "Scratch Projection Mirror Only") var debug_projection_readback_checkpoint: int = 0
 
 var rd: RenderingDevice
 var shader: RID
@@ -633,5 +633,7 @@ func _projection_readback_checkpoint_name(value: int) -> String:
 			return "sort_values_sentinel_only"
 		6:
 			return "culled_splats_sentinel_only"
+		7:
+			return "scratch_projection_mirror_only"
 		_:
 			return "unknown(%d)" % value

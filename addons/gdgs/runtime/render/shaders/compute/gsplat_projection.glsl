@@ -93,6 +93,10 @@ layout(std430, set = 0, binding = 9) restrict buffer ProjectionProbe {
 	uint projection_probe[];
 };
 
+layout(std430, set = 0, binding = 10) restrict buffer ScratchProbeBuffer {
+	uint scratch_probe[];
+};
+
 layout(push_constant) restrict readonly uniform PushConstants {
 	mat4 view_matrix;
 	mat4 projection_matrix;
@@ -122,6 +126,17 @@ const uint PROJECTION_PROBE_MAX_REQUESTED_TILE_ID = 20u;
 const uint PROJECTION_PROBE_NON_FINITE_FAILURE_COUNT = 21u;
 const uint PROJECTION_PROBE_SORT_OVERFLOW_GUARD_COUNT = 22u;
 const uint PROJECTION_PROBE_TILE_GUARD_COUNT = 23u;
+
+const uint SCRATCH_PROBE_PROJECTION_INVOCATIONS = 4u;
+const uint SCRATCH_PROBE_PROJECTION_VISIBLE_SPLATS = 5u;
+const uint SCRATCH_PROBE_PROJECTION_STAGE_BITS = 6u;
+const uint SCRATCH_PROBE_PROJECTION_MAX_REQUESTED_SORT_END = 7u;
+
+const uint SCRATCH_PROJECTION_STAGE_ENTRY = 1u << 0;
+const uint SCRATCH_PROJECTION_STAGE_VISIBLE = 1u << 1;
+const uint SCRATCH_PROJECTION_STAGE_CULLED_WRITE = 1u << 2;
+const uint SCRATCH_PROJECTION_STAGE_SORT_RESERVED = 1u << 3;
+const uint SCRATCH_PROJECTION_STAGE_SORT_WRITTEN = 1u << 4;
 
 const uint PROJECTION_ERROR_FLAG_NON_FINITE = 1u << 0;
 const uint PROJECTION_ERROR_FLAG_SORT_OVERFLOW = 1u << 1;
@@ -264,6 +279,8 @@ void main() {
 
 	if (id >= uint(point_count)) return;
 	atomicAdd(projection_probe[PROJECTION_PROBE_INVOCATIONS], 1u);
+	atomicAdd(scratch_probe[SCRATCH_PROBE_PROJECTION_INVOCATIONS], 1u);
+	atomicOr(scratch_probe[SCRATCH_PROBE_PROJECTION_STAGE_BITS], SCRATCH_PROJECTION_STAGE_ENTRY);
 
 	barrier();
 	uvec2 instance_data = splat_instance_data[id];
@@ -347,6 +364,8 @@ void main() {
 	}
 	uint num_tiles_touched = (rect_bounds.z - rect_bounds.x)*(rect_bounds.w - rect_bounds.y);
 	atomicAdd(projection_probe[PROJECTION_PROBE_VISIBLE_SPLATS], 1u);
+	atomicAdd(scratch_probe[SCRATCH_PROBE_PROJECTION_VISIBLE_SPLATS], 1u);
+	atomicOr(scratch_probe[SCRATCH_PROBE_PROJECTION_STAGE_BITS], SCRATCH_PROJECTION_STAGE_VISIBLE);
 	atomicMax(projection_probe[PROJECTION_PROBE_MAX_TILES_TOUCHED], num_tiles_touched);
 
 	if (num_tiles_touched == 0 /*|| num_tiles_touched > grid_size.x*grid_size.y/3*/) {
@@ -368,6 +387,8 @@ void main() {
 		record_projection_failure(id, PROJECTION_FAILURE_SORT_OVERFLOW, PROJECTION_ERROR_FLAG_SORT_OVERFLOW, sort_buffer_offset, requested_sort_end);
 		return;
 	}
+	atomicOr(scratch_probe[SCRATCH_PROBE_PROJECTION_STAGE_BITS], SCRATCH_PROJECTION_STAGE_SORT_RESERVED);
+	atomicMax(scratch_probe[SCRATCH_PROBE_PROJECTION_MAX_REQUESTED_SORT_END], requested_sort_end);
 	atomicAdd(projection_probe[PROJECTION_PROBE_DUPLICATED_SPLATS], 1u);
 	atomicAdd(projection_probe[PROJECTION_PROBE_EMITTED_SORT_ELEMENTS], num_tiles_touched);
 	atomicMax(projection_probe[PROJECTION_PROBE_MAX_SORT_END], requested_sort_end);
@@ -391,6 +412,7 @@ void main() {
 	data.pos_z = world_pos.z;
 	data.depth_data = vec4(-view_pos.z, 0.0, 0.0, 0.0);
 	culled_buffer[id] = data;
+	atomicOr(scratch_probe[SCRATCH_PROBE_PROJECTION_STAGE_BITS], SCRATCH_PROJECTION_STAGE_CULLED_WRITE);
 	barrier();
 
 	// --- GAUSSIAN DUPLICATION ---
@@ -416,4 +438,5 @@ void main() {
 		sort_values[sort_buffer_offset] = id;
 		sort_buffer_offset++;
 	}
+	atomicOr(scratch_probe[SCRATCH_PROBE_PROJECTION_STAGE_BITS], SCRATCH_PROJECTION_STAGE_SORT_WRITTEN);
 }
