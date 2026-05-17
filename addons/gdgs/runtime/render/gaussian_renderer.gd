@@ -16,6 +16,16 @@ enum RasterDebugStage {
 	SCRATCH_ONLY
 }
 
+enum ProjectionReadbackCheckpoint {
+	FULL_PACKAGE,
+	DISABLED,
+	HISTOGRAM_HEADER_ONLY,
+	PROJECTION_PROBE_ONLY,
+	SORT_KEYS_SENTINEL_ONLY,
+	SORT_VALUES_SENTINEL_ONLY,
+	CULLED_SPLATS_SENTINEL_ONLY
+}
+
 var _once_logs := {}
 
 func render_for_compositor(
@@ -26,7 +36,8 @@ func render_for_compositor(
 	camera_projection: Projection,
 	camera_world_position: Vector3,
 	depth_capture_alpha: float = 0.5,
-	debug_raster_stage: int = RasterDebugStage.FULL_PIPELINE
+	debug_raster_stage: int = RasterDebugStage.FULL_PIPELINE,
+	debug_projection_readback_checkpoint: int = ProjectionReadbackCheckpoint.FULL_PACKAGE
 ) -> Dictionary:
 	state_cache.flush_pending_cleanup()
 
@@ -73,8 +84,12 @@ func render_for_compositor(
 		"raster_stage_gate",
 		"[gdgs] renderer raster stage gate=%s" % _raster_stage_name(debug_raster_stage)
 	)
+	_log_once(
+		"projection_readback_checkpoint_gate",
+		"[gdgs] renderer projection readback checkpoint=%s" % _projection_readback_checkpoint_name(debug_projection_readback_checkpoint)
+	)
 
-	_rasterize_state(state, point_count, debug_raster_stage)
+	_rasterize_state(state, point_count, debug_raster_stage, debug_projection_readback_checkpoint)
 	if state.descriptors.has("render_texture") and state.descriptors.has("depth_texture"):
 		var color_texture: RID = state.descriptors["render_texture"].rid
 		var depth_texture: RID = state.descriptors["depth_texture"].rid
@@ -93,7 +108,7 @@ func render_for_compositor(
 		}
 	return {}
 
-func _rasterize_state(state, point_count: int, debug_raster_stage: int) -> void:
+func _rasterize_state(state, point_count: int, debug_raster_stage: int, debug_projection_readback_checkpoint: int) -> void:
 	if state.context == null:
 		return
 
@@ -119,6 +134,7 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int) -> void:
 	state.context.device.buffer_update(state.descriptors["culled_splats"].rid, 0, 4 * 4, _uint_words_byte_array([0x7FC00000, 0x7FC00000, 0x7FC00000, 0x7FC00000]))
 	_log_stage("prepared", state, point_count, {
 		"raster_stage_gate": _raster_stage_name(debug_raster_stage),
+		"projection_readback_checkpoint": _projection_readback_checkpoint_name(debug_projection_readback_checkpoint),
 		"projection_push_constant_bytes": state.camera_push_constants.size(),
 		"projection_push_constant_layout": str(state.diagnostics.get("projection_push_constant_layout", "unknown")),
 		"projection_group_count": state.diagnostics.get("projection_group_count", -1),
@@ -155,7 +171,7 @@ func _rasterize_state(state, point_count: int, debug_raster_stage: int) -> void:
 		"projection_group_count": state.diagnostics.get("projection_group_count", -1)
 	})
 	state.context.compute_list_end()
-	_log_projection_post_dispatch_evidence(state, point_count)
+	_run_projection_post_dispatch_checkpoint(state, point_count, debug_projection_readback_checkpoint)
 
 	if debug_raster_stage == RasterDebugStage.PROJECTION_ONLY:
 		_log_stage("projection_only_gate", state, point_count)
@@ -318,7 +334,103 @@ func _format_u32_words_hex(data: PackedByteArray) -> String:
 		hex_words.append("0x%08x" % data.decode_u32(i * 4))
 	return ",".join(hex_words)
 
+func _run_projection_post_dispatch_checkpoint(state, point_count: int, checkpoint: int) -> void:
+	var checkpoint_name := _projection_readback_checkpoint_name(checkpoint)
+	_log_stage("projection_post_dispatch_checkpoint_begin", state, point_count, {
+		"checkpoint": checkpoint_name
+	})
+	match checkpoint:
+		ProjectionReadbackCheckpoint.FULL_PACKAGE:
+			_log_projection_post_dispatch_evidence(state, point_count)
+		ProjectionReadbackCheckpoint.DISABLED:
+			_log_stage("projection_post_dispatch_checkpoint_disabled", state, point_count, {
+				"checkpoint": checkpoint_name
+			})
+		ProjectionReadbackCheckpoint.HISTOGRAM_HEADER_ONLY:
+			_log_projection_histogram_header_readback(state, point_count)
+		ProjectionReadbackCheckpoint.PROJECTION_PROBE_ONLY:
+			_log_projection_probe_readback(state, point_count)
+		ProjectionReadbackCheckpoint.SORT_KEYS_SENTINEL_ONLY:
+			_log_projection_sort_keys_sentinel_readback(state, point_count)
+		ProjectionReadbackCheckpoint.SORT_VALUES_SENTINEL_ONLY:
+			_log_projection_sort_values_sentinel_readback(state, point_count)
+		ProjectionReadbackCheckpoint.CULLED_SPLATS_SENTINEL_ONLY:
+			_log_projection_culled_splats_sentinel_readback(state, point_count)
+		_:
+			_log_stage("projection_post_dispatch_checkpoint_unknown", state, point_count, {
+				"checkpoint": checkpoint_name
+			})
+	_log_stage("projection_post_dispatch_checkpoint_end", state, point_count, {
+		"checkpoint": checkpoint_name
+	})
+
+func _log_projection_histogram_header_readback(state, point_count: int) -> void:
+	_log_stage("projection_readback_histogram_header_begin", state, point_count, {
+		"histogram_valid": str(state.descriptors["histogram"].rid.is_valid())
+	})
+	var histogram_data: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["histogram"].rid, 0, 4)
+	var sort_buffer_size: int = histogram_data.decode_u32(0) if histogram_data.size() >= 4 else -1
+	var sort_capacity := int(state.diagnostics.get("num_sort_elements_max", 0))
+	_log_stage("projection_readback_histogram_header_end", state, point_count, {
+		"histogram_bytes": histogram_data.size(),
+		"sort_buffer_size": sort_buffer_size,
+		"sort_capacity": sort_capacity,
+		"sort_within_capacity": str(sort_buffer_size >= 0 and sort_buffer_size <= sort_capacity)
+	})
+
+func _log_projection_probe_readback(state, point_count: int) -> void:
+	_log_stage("projection_readback_projection_probe_begin", state, point_count, {
+		"projection_probe_valid": str(state.descriptors["projection_probe"].rid.is_valid())
+	})
+	var projection_probe_data: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["projection_probe"].rid, 0, int(state.diagnostics.get("projection_probe_words", 0)) * 4)
+	var projection_probe_words: PackedInt32Array = _decode_u32_words(projection_probe_data)
+	var sort_capacity := int(state.diagnostics.get("num_sort_elements_max", 0))
+	var probe_max_sort_end := projection_probe_words[4] if projection_probe_words.size() > 4 else -1
+	var probe_max_tile_id := projection_probe_words[5] if projection_probe_words.size() > 5 else -1
+	var probe_tile_capacity := projection_probe_words[9] if projection_probe_words.size() > 9 else -1
+	_log_stage("projection_readback_projection_probe_end", state, point_count, {
+		"probe_words": str(projection_probe_words),
+		"probe_invocations": projection_probe_words[0] if projection_probe_words.size() > 0 else -1,
+		"probe_visible_splats": projection_probe_words[1] if projection_probe_words.size() > 1 else -1,
+		"probe_duplicated_splats": projection_probe_words[2] if projection_probe_words.size() > 2 else -1,
+		"probe_emitted_sort_elements": projection_probe_words[3] if projection_probe_words.size() > 3 else -1,
+		"probe_max_sort_end": probe_max_sort_end,
+		"probe_max_sort_end_within_capacity": str(probe_max_sort_end >= 0 and probe_max_sort_end <= sort_capacity),
+		"probe_max_tile_id": probe_max_tile_id,
+		"probe_max_tile_id_within_capacity": str(probe_max_tile_id >= 0 and probe_max_tile_id < probe_tile_capacity),
+		"probe_max_tiles_touched": projection_probe_words[6] if projection_probe_words.size() > 6 else -1,
+		"probe_zero_tile_splats": projection_probe_words[7] if projection_probe_words.size() > 7 else -1
+	})
+
+func _log_projection_sort_keys_sentinel_readback(state, point_count: int) -> void:
+	_log_stage("projection_readback_sort_keys_sentinel_begin", state, point_count, {
+		"sort_keys_valid": str(state.descriptors["sort_keys"].rid.is_valid())
+	})
+	var first_sort_keys: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["sort_keys"].rid, 0, 4 * 4)
+	_log_stage("projection_readback_sort_keys_sentinel_end", state, point_count, {
+		"first_sort_keys": _format_u32_words_hex(first_sort_keys)
+	})
+
+func _log_projection_sort_values_sentinel_readback(state, point_count: int) -> void:
+	_log_stage("projection_readback_sort_values_sentinel_begin", state, point_count, {
+		"sort_values_valid": str(state.descriptors["sort_values"].rid.is_valid())
+	})
+	var first_sort_values: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["sort_values"].rid, 0, 4 * 4)
+	_log_stage("projection_readback_sort_values_sentinel_end", state, point_count, {
+		"first_sort_values": _format_u32_words_hex(first_sort_values)
+	})
+
+func _log_projection_culled_splats_sentinel_readback(state, point_count: int) -> void:
+	_log_stage("projection_readback_culled_splats_sentinel_begin", state, point_count, {
+		"culled_buffer_valid": str(state.descriptors["culled_splats"].rid.is_valid())
+	})
+	var first_culled_words: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["culled_splats"].rid, 0, 4 * 4)
+	_log_stage("projection_readback_culled_splats_sentinel_end", state, point_count, {
+		"first_culled_words": _format_u32_words_hex(first_culled_words)
+	})
+
 func _log_projection_post_dispatch_evidence(state, point_count: int) -> void:
+	_log_stage("projection_post_dispatch_full_package_begin", state, point_count)
 	var histogram_data: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["histogram"].rid, 0, 4)
 	var sort_buffer_size: int = histogram_data.decode_u32(0) if histogram_data.size() >= 4 else -1
 	var sort_capacity := int(state.diagnostics.get("num_sort_elements_max", 0))
@@ -354,6 +466,7 @@ func _log_projection_post_dispatch_evidence(state, point_count: int) -> void:
 		"sort_values_valid": str(state.descriptors["sort_values"].rid.is_valid()),
 		"histogram_valid": str(state.descriptors["histogram"].rid.is_valid())
 	})
+	_log_stage("projection_post_dispatch_full_package_end", state, point_count)
 
 func _log_scratch_probe_readback(state, point_count: int) -> void:
 	var scratch_data: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["scratch_probe"].rid, 0, 16)
@@ -422,5 +535,24 @@ func _raster_stage_name(value: int) -> String:
 			return "render_only"
 		RasterDebugStage.SCRATCH_ONLY:
 			return "scratch_only"
+		_:
+			return "unknown(%d)" % value
+
+func _projection_readback_checkpoint_name(value: int) -> String:
+	match value:
+		ProjectionReadbackCheckpoint.FULL_PACKAGE:
+			return "full_package"
+		ProjectionReadbackCheckpoint.DISABLED:
+			return "disabled"
+		ProjectionReadbackCheckpoint.HISTOGRAM_HEADER_ONLY:
+			return "histogram_header_only"
+		ProjectionReadbackCheckpoint.PROJECTION_PROBE_ONLY:
+			return "projection_probe_only"
+		ProjectionReadbackCheckpoint.SORT_KEYS_SENTINEL_ONLY:
+			return "sort_keys_sentinel_only"
+		ProjectionReadbackCheckpoint.SORT_VALUES_SENTINEL_ONLY:
+			return "sort_values_sentinel_only"
+		ProjectionReadbackCheckpoint.CULLED_SPLATS_SENTINEL_ONLY:
+			return "culled_splats_sentinel_only"
 		_:
 			return "unknown(%d)" % value

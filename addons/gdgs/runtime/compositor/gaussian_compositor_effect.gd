@@ -47,6 +47,7 @@ enum CompositorDebugStage {
 @export var ignore_scene_depth_in_composite := false
 @export_enum("Full Pipeline", "Callback Only", "Raster Only (No Writeback)") var debug_compositor_stage: int = CompositorDebugStage.FULL_PIPELINE
 @export_enum("Full Pipeline", "Prepared / No Dispatch", "Projection Only", "Radix Only", "Boundaries Only", "Render Only", "Scratch Dispatch Only") var debug_raster_stage: int = 0
+@export_enum("Full Package", "Disabled / No Readback", "Histogram Header Only", "Projection Probe Only", "Sort Keys Sentinel Only", "Sort Values Sentinel Only", "Culled Splats Sentinel Only") var debug_projection_readback_checkpoint: int = 0
 
 var rd: RenderingDevice
 var shader: RID
@@ -121,16 +122,18 @@ func _render_callback(_effect_callback_type: int, render_data: RenderData) -> vo
 	)
 	_log_once(
 		"debug_stage_summary",
-		"[gdgs] compositor stage gate=%s raster stage gate=%s" % [
+		"[gdgs] compositor stage gate=%s raster stage gate=%s projection readback checkpoint=%s" % [
 			_compositor_stage_name(debug_compositor_stage),
-			_raster_stage_name(debug_raster_stage)
+			_raster_stage_name(debug_raster_stage),
+			_projection_readback_checkpoint_name(debug_projection_readback_checkpoint)
 		]
 	)
 	_log_once("render_callback_entered", "[gdgs] compositor render callback entered")
-	print("[gdgs] compositor stage=enter_callback mode=%s compositor_stage=%s raster_stage=%s" % [
+	print("[gdgs] compositor stage=enter_callback mode=%s compositor_stage=%s raster_stage=%s projection_readback_checkpoint=%s" % [
 		_display_mode_name(current_display_mode),
 		_compositor_stage_name(debug_compositor_stage),
-		_raster_stage_name(debug_raster_stage)
+		_raster_stage_name(debug_raster_stage),
+		_projection_readback_checkpoint_name(debug_projection_readback_checkpoint)
 	])
 	if not (uses_overlay or is_no_present_mode) and (not rd or not shader.is_valid() or not pipeline.is_valid()):
 		_queue_direct_texture_presentation(DisplayMode.COMPOSITOR, RID())
@@ -186,7 +189,8 @@ func _render_callback(_effect_callback_type: int, render_data: RenderData) -> vo
 			camera_data["projection"],
 			camera_data["world_position"],
 			_get_depth_capture_alpha(),
-			debug_raster_stage
+			debug_raster_stage,
+			debug_projection_readback_checkpoint
 		)
 		print("[gdgs] compositor stage=render_for_compositor_returned view=%d empty=%s" % [view, str(gsplat_result.is_empty())])
 		if gsplat_result.is_empty():
@@ -611,3 +615,23 @@ func _get_scene_tree() -> SceneTree:
 	if main_loop is SceneTree:
 		return main_loop
 	return null
+
+
+func _projection_readback_checkpoint_name(value: int) -> String:
+	match value:
+		0:
+			return "full_package"
+		1:
+			return "disabled"
+		2:
+			return "histogram_header_only"
+		3:
+			return "projection_probe_only"
+		4:
+			return "sort_keys_sentinel_only"
+		5:
+			return "sort_values_sentinel_only"
+		6:
+			return "culled_splats_sentinel_only"
+		_:
+			return "unknown(%d)" % value
