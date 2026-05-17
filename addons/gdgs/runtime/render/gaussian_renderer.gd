@@ -6,6 +6,51 @@ const RenderingDeviceContext := preload("res://addons/gdgs/runtime/render/gaussi
 const RADIX := 256
 const MAX_SORT_ELEMENTS_PER_SPLAT := 10
 
+const PROJECTION_PROBE_INVOCATIONS := 0
+const PROJECTION_PROBE_VISIBLE_SPLATS := 1
+const PROJECTION_PROBE_DUPLICATED_SPLATS := 2
+const PROJECTION_PROBE_EMITTED_SORT_ELEMENTS := 3
+const PROJECTION_PROBE_MAX_SORT_END := 4
+const PROJECTION_PROBE_MAX_TILE_ID := 5
+const PROJECTION_PROBE_MAX_TILES_TOUCHED := 6
+const PROJECTION_PROBE_ZERO_TILE_SPLATS := 7
+const PROJECTION_PROBE_SORT_CAPACITY := 8
+const PROJECTION_PROBE_TILE_CAPACITY := 9
+const PROJECTION_PROBE_POINT_COUNT := 10
+const PROJECTION_PROBE_GRID_WIDTH := 11
+const PROJECTION_PROBE_GRID_HEIGHT := 12
+const PROJECTION_PROBE_ERROR_FLAGS := 13
+const PROJECTION_PROBE_GUARD_ABORT_COUNT := 14
+const PROJECTION_PROBE_FIRST_FAILURE_STAGE := 15
+const PROJECTION_PROBE_FIRST_FAILURE_ID := 16
+const PROJECTION_PROBE_FIRST_FAILURE_VALUE0 := 17
+const PROJECTION_PROBE_FIRST_FAILURE_VALUE1 := 18
+const PROJECTION_PROBE_MAX_REQUESTED_SORT_END := 19
+const PROJECTION_PROBE_MAX_REQUESTED_TILE_ID := 20
+const PROJECTION_PROBE_NON_FINITE_FAILURE_COUNT := 21
+const PROJECTION_PROBE_SORT_OVERFLOW_GUARD_COUNT := 22
+const PROJECTION_PROBE_TILE_GUARD_COUNT := 23
+
+const PROJECTION_ERROR_FLAG_NON_FINITE := 1 << 0
+const PROJECTION_ERROR_FLAG_SORT_OVERFLOW := 1 << 1
+const PROJECTION_ERROR_FLAG_TILE_OOB := 1 << 2
+const PROJECTION_ERROR_FLAG_RECT_INVALID := 1 << 3
+
+const PROJECTION_FAILURE_NONE := 0
+const PROJECTION_FAILURE_VIEW_POS_NON_FINITE := 1
+const PROJECTION_FAILURE_CLIP_POS_NON_FINITE := 2
+const PROJECTION_FAILURE_COVARIANCE_NON_FINITE := 3
+const PROJECTION_FAILURE_DETERMINANT_NON_FINITE := 4
+const PROJECTION_FAILURE_EIGENVALUES_NON_FINITE := 5
+const PROJECTION_FAILURE_IMAGE_POS_NON_FINITE := 6
+const PROJECTION_FAILURE_RADIUS_NON_FINITE := 7
+const PROJECTION_FAILURE_RECT_INVALID := 8
+const PROJECTION_FAILURE_SORT_OVERFLOW := 9
+const PROJECTION_FAILURE_TILE_ID_OOB := 10
+const PROJECTION_FAILURE_VIEW_DEPTH_NON_FINITE := 11
+const PROJECTION_FAILURE_CONIC_NON_FINITE := 12
+const PROJECTION_FAILURE_COLOR_NON_FINITE := 13
+
 enum RasterDebugStage {
 	FULL_PIPELINE,
 	PREPARED_NO_DISPATCH,
@@ -309,7 +354,18 @@ func _projection_probe_seed_bytes(state, point_count: int) -> PackedByteArray:
 		int(state.diagnostics.get("tile_bounds_capacity", 0)),
 		point_count,
 		state.tile_dims.x,
-		state.tile_dims.y
+		state.tile_dims.y,
+		0,
+		0,
+		PROJECTION_FAILURE_NONE,
+		0xFFFFFFFF,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0
 	])
 
 func _uint_words_byte_array(words: Array) -> PackedByteArray:
@@ -333,6 +389,84 @@ func _format_u32_words_hex(data: PackedByteArray) -> String:
 	for i in range(int(data.size() / 4)):
 		hex_words.append("0x%08x" % data.decode_u32(i * 4))
 	return ",".join(hex_words)
+
+
+func _probe_word(words: PackedInt32Array, index: int, fallback: int = -1) -> int:
+	return words[index] if index >= 0 and index < words.size() else fallback
+
+func _projection_error_flags_hex(value: int) -> String:
+	return "0x%08x" % (value & 0xFFFFFFFF)
+
+func _projection_failure_stage_name(value: int) -> String:
+	match value:
+		PROJECTION_FAILURE_NONE:
+			return "none"
+		PROJECTION_FAILURE_VIEW_POS_NON_FINITE:
+			return "view_pos_non_finite"
+		PROJECTION_FAILURE_CLIP_POS_NON_FINITE:
+			return "clip_pos_non_finite"
+		PROJECTION_FAILURE_COVARIANCE_NON_FINITE:
+			return "covariance_non_finite"
+		PROJECTION_FAILURE_DETERMINANT_NON_FINITE:
+			return "determinant_non_finite"
+		PROJECTION_FAILURE_EIGENVALUES_NON_FINITE:
+			return "eigenvalues_non_finite"
+		PROJECTION_FAILURE_IMAGE_POS_NON_FINITE:
+			return "image_pos_non_finite"
+		PROJECTION_FAILURE_RADIUS_NON_FINITE:
+			return "radius_non_finite"
+		PROJECTION_FAILURE_RECT_INVALID:
+			return "rect_invalid"
+		PROJECTION_FAILURE_SORT_OVERFLOW:
+			return "sort_overflow_guarded"
+		PROJECTION_FAILURE_TILE_ID_OOB:
+			return "tile_id_oob_guarded"
+		PROJECTION_FAILURE_VIEW_DEPTH_NON_FINITE:
+			return "view_depth_non_finite"
+		PROJECTION_FAILURE_CONIC_NON_FINITE:
+			return "conic_non_finite"
+		PROJECTION_FAILURE_COLOR_NON_FINITE:
+			return "color_non_finite"
+		_:
+			return "unknown(%d)" % value
+
+func _projection_probe_log_fields(projection_probe_words: PackedInt32Array) -> Dictionary:
+	var sort_capacity := _probe_word(projection_probe_words, PROJECTION_PROBE_SORT_CAPACITY)
+	var probe_tile_capacity := _probe_word(projection_probe_words, PROJECTION_PROBE_TILE_CAPACITY)
+	var probe_error_flags := _probe_word(projection_probe_words, PROJECTION_PROBE_ERROR_FLAGS, 0)
+	var probe_first_failure_stage := _probe_word(projection_probe_words, PROJECTION_PROBE_FIRST_FAILURE_STAGE, PROJECTION_FAILURE_NONE)
+	var probe_max_sort_end := _probe_word(projection_probe_words, PROJECTION_PROBE_MAX_SORT_END)
+	var probe_max_requested_sort_end := _probe_word(projection_probe_words, PROJECTION_PROBE_MAX_REQUESTED_SORT_END)
+	var probe_max_tile_id := _probe_word(projection_probe_words, PROJECTION_PROBE_MAX_TILE_ID)
+	var probe_max_requested_tile_id := _probe_word(projection_probe_words, PROJECTION_PROBE_MAX_REQUESTED_TILE_ID)
+	return {
+		"probe_words": str(projection_probe_words),
+		"probe_invocations": _probe_word(projection_probe_words, PROJECTION_PROBE_INVOCATIONS),
+		"probe_visible_splats": _probe_word(projection_probe_words, PROJECTION_PROBE_VISIBLE_SPLATS),
+		"probe_duplicated_splats": _probe_word(projection_probe_words, PROJECTION_PROBE_DUPLICATED_SPLATS),
+		"probe_emitted_sort_elements": _probe_word(projection_probe_words, PROJECTION_PROBE_EMITTED_SORT_ELEMENTS),
+		"probe_max_sort_end": probe_max_sort_end,
+		"probe_max_sort_end_within_capacity": str(probe_max_sort_end >= 0 and probe_max_sort_end <= sort_capacity),
+		"probe_max_tile_id": probe_max_tile_id,
+		"probe_max_tile_id_within_capacity": str(probe_max_tile_id >= 0 and probe_max_tile_id < probe_tile_capacity),
+		"probe_max_tiles_touched": _probe_word(projection_probe_words, PROJECTION_PROBE_MAX_TILES_TOUCHED),
+		"probe_zero_tile_splats": _probe_word(projection_probe_words, PROJECTION_PROBE_ZERO_TILE_SPLATS),
+		"probe_error_flags": probe_error_flags,
+		"probe_error_flags_hex": _projection_error_flags_hex(probe_error_flags),
+		"probe_guard_abort_count": _probe_word(projection_probe_words, PROJECTION_PROBE_GUARD_ABORT_COUNT),
+		"probe_first_failure_stage": probe_first_failure_stage,
+		"probe_first_failure_stage_name": _projection_failure_stage_name(probe_first_failure_stage),
+		"probe_first_failure_id": _probe_word(projection_probe_words, PROJECTION_PROBE_FIRST_FAILURE_ID),
+		"probe_first_failure_value0": _probe_word(projection_probe_words, PROJECTION_PROBE_FIRST_FAILURE_VALUE0),
+		"probe_first_failure_value1": _probe_word(projection_probe_words, PROJECTION_PROBE_FIRST_FAILURE_VALUE1),
+		"probe_max_requested_sort_end": probe_max_requested_sort_end,
+		"probe_max_requested_sort_end_within_capacity": str(probe_max_requested_sort_end >= 0 and probe_max_requested_sort_end <= sort_capacity),
+		"probe_max_requested_tile_id": probe_max_requested_tile_id,
+		"probe_max_requested_tile_id_within_capacity": str(probe_max_requested_tile_id >= 0 and probe_max_requested_tile_id < probe_tile_capacity),
+		"probe_non_finite_failure_count": _probe_word(projection_probe_words, PROJECTION_PROBE_NON_FINITE_FAILURE_COUNT),
+		"probe_sort_overflow_guard_count": _probe_word(projection_probe_words, PROJECTION_PROBE_SORT_OVERFLOW_GUARD_COUNT),
+		"probe_tile_guard_count": _probe_word(projection_probe_words, PROJECTION_PROBE_TILE_GUARD_COUNT)
+	}
 
 func _run_projection_post_dispatch_checkpoint(state, point_count: int, checkpoint: int) -> void:
 	var checkpoint_name := _projection_readback_checkpoint_name(checkpoint)
@@ -384,23 +518,7 @@ func _log_projection_probe_readback(state, point_count: int) -> void:
 	})
 	var projection_probe_data: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["projection_probe"].rid, 0, int(state.diagnostics.get("projection_probe_words", 0)) * 4)
 	var projection_probe_words: PackedInt32Array = _decode_u32_words(projection_probe_data)
-	var sort_capacity := int(state.diagnostics.get("num_sort_elements_max", 0))
-	var probe_max_sort_end := projection_probe_words[4] if projection_probe_words.size() > 4 else -1
-	var probe_max_tile_id := projection_probe_words[5] if projection_probe_words.size() > 5 else -1
-	var probe_tile_capacity := projection_probe_words[9] if projection_probe_words.size() > 9 else -1
-	_log_stage("projection_readback_projection_probe_end", state, point_count, {
-		"probe_words": str(projection_probe_words),
-		"probe_invocations": projection_probe_words[0] if projection_probe_words.size() > 0 else -1,
-		"probe_visible_splats": projection_probe_words[1] if projection_probe_words.size() > 1 else -1,
-		"probe_duplicated_splats": projection_probe_words[2] if projection_probe_words.size() > 2 else -1,
-		"probe_emitted_sort_elements": projection_probe_words[3] if projection_probe_words.size() > 3 else -1,
-		"probe_max_sort_end": probe_max_sort_end,
-		"probe_max_sort_end_within_capacity": str(probe_max_sort_end >= 0 and probe_max_sort_end <= sort_capacity),
-		"probe_max_tile_id": probe_max_tile_id,
-		"probe_max_tile_id_within_capacity": str(probe_max_tile_id >= 0 and probe_max_tile_id < probe_tile_capacity),
-		"probe_max_tiles_touched": projection_probe_words[6] if projection_probe_words.size() > 6 else -1,
-		"probe_zero_tile_splats": projection_probe_words[7] if projection_probe_words.size() > 7 else -1
-	})
+	_log_stage("projection_readback_projection_probe_end", state, point_count, _projection_probe_log_fields(projection_probe_words))
 
 func _log_projection_sort_keys_sentinel_readback(state, point_count: int) -> void:
 	_log_stage("projection_readback_sort_keys_sentinel_begin", state, point_count, {
@@ -439,25 +557,11 @@ func _log_projection_post_dispatch_evidence(state, point_count: int) -> void:
 	var first_sort_keys: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["sort_keys"].rid, 0, 4 * 4)
 	var first_sort_values: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["sort_values"].rid, 0, 4 * 4)
 	var first_culled_words: PackedByteArray = state.context.device.buffer_get_data(state.descriptors["culled_splats"].rid, 0, 4 * 4)
-	var probe_max_sort_end := projection_probe_words[4] if projection_probe_words.size() > 4 else -1
-	var probe_max_tile_id := projection_probe_words[5] if projection_probe_words.size() > 5 else -1
-	var probe_tile_capacity := projection_probe_words[9] if projection_probe_words.size() > 9 else -1
-	_log_stage("projection_post_dispatch", state, point_count, {
+	var extras := {
 		"histogram_bytes": histogram_data.size(),
 		"sort_buffer_size": sort_buffer_size,
 		"sort_capacity": sort_capacity,
 		"sort_within_capacity": str(sort_buffer_size >= 0 and sort_buffer_size <= sort_capacity),
-		"probe_invocations": projection_probe_words[0] if projection_probe_words.size() > 0 else -1,
-		"probe_visible_splats": projection_probe_words[1] if projection_probe_words.size() > 1 else -1,
-		"probe_duplicated_splats": projection_probe_words[2] if projection_probe_words.size() > 2 else -1,
-		"probe_emitted_sort_elements": projection_probe_words[3] if projection_probe_words.size() > 3 else -1,
-		"probe_max_sort_end": probe_max_sort_end,
-		"probe_max_sort_end_within_capacity": str(probe_max_sort_end >= 0 and probe_max_sort_end <= sort_capacity),
-		"probe_max_tile_id": probe_max_tile_id,
-		"probe_max_tile_id_within_capacity": str(probe_max_tile_id >= 0 and probe_max_tile_id < probe_tile_capacity),
-		"probe_max_tiles_touched": projection_probe_words[6] if projection_probe_words.size() > 6 else -1,
-		"probe_zero_tile_splats": projection_probe_words[7] if projection_probe_words.size() > 7 else -1,
-		"probe_words": str(projection_probe_words),
 		"first_sort_keys": _format_u32_words_hex(first_sort_keys),
 		"first_sort_values": _format_u32_words_hex(first_sort_values),
 		"first_culled_words": _format_u32_words_hex(first_culled_words),
@@ -465,7 +569,9 @@ func _log_projection_post_dispatch_evidence(state, point_count: int) -> void:
 		"sort_keys_valid": str(state.descriptors["sort_keys"].rid.is_valid()),
 		"sort_values_valid": str(state.descriptors["sort_values"].rid.is_valid()),
 		"histogram_valid": str(state.descriptors["histogram"].rid.is_valid())
-	})
+	}
+	extras.merge(_projection_probe_log_fields(projection_probe_words))
+	_log_stage("projection_post_dispatch", state, point_count, extras)
 	_log_stage("projection_post_dispatch_full_package_end", state, point_count)
 
 func _log_scratch_probe_readback(state, point_count: int) -> void:

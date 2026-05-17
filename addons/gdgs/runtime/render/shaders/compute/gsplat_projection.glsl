@@ -111,6 +111,37 @@ const uint PROJECTION_PROBE_TILE_CAPACITY = 9u;
 const uint PROJECTION_PROBE_POINT_COUNT = 10u;
 const uint PROJECTION_PROBE_GRID_WIDTH = 11u;
 const uint PROJECTION_PROBE_GRID_HEIGHT = 12u;
+const uint PROJECTION_PROBE_ERROR_FLAGS = 13u;
+const uint PROJECTION_PROBE_GUARD_ABORT_COUNT = 14u;
+const uint PROJECTION_PROBE_FIRST_FAILURE_STAGE = 15u;
+const uint PROJECTION_PROBE_FIRST_FAILURE_ID = 16u;
+const uint PROJECTION_PROBE_FIRST_FAILURE_VALUE0 = 17u;
+const uint PROJECTION_PROBE_FIRST_FAILURE_VALUE1 = 18u;
+const uint PROJECTION_PROBE_MAX_REQUESTED_SORT_END = 19u;
+const uint PROJECTION_PROBE_MAX_REQUESTED_TILE_ID = 20u;
+const uint PROJECTION_PROBE_NON_FINITE_FAILURE_COUNT = 21u;
+const uint PROJECTION_PROBE_SORT_OVERFLOW_GUARD_COUNT = 22u;
+const uint PROJECTION_PROBE_TILE_GUARD_COUNT = 23u;
+
+const uint PROJECTION_ERROR_FLAG_NON_FINITE = 1u << 0;
+const uint PROJECTION_ERROR_FLAG_SORT_OVERFLOW = 1u << 1;
+const uint PROJECTION_ERROR_FLAG_TILE_OOB = 1u << 2;
+const uint PROJECTION_ERROR_FLAG_RECT_INVALID = 1u << 3;
+
+const uint PROJECTION_FAILURE_NONE = 0u;
+const uint PROJECTION_FAILURE_VIEW_POS_NON_FINITE = 1u;
+const uint PROJECTION_FAILURE_CLIP_POS_NON_FINITE = 2u;
+const uint PROJECTION_FAILURE_COVARIANCE_NON_FINITE = 3u;
+const uint PROJECTION_FAILURE_DETERMINANT_NON_FINITE = 4u;
+const uint PROJECTION_FAILURE_EIGENVALUES_NON_FINITE = 5u;
+const uint PROJECTION_FAILURE_IMAGE_POS_NON_FINITE = 6u;
+const uint PROJECTION_FAILURE_RADIUS_NON_FINITE = 7u;
+const uint PROJECTION_FAILURE_RECT_INVALID = 8u;
+const uint PROJECTION_FAILURE_SORT_OVERFLOW = 9u;
+const uint PROJECTION_FAILURE_TILE_ID_OOB = 10u;
+const uint PROJECTION_FAILURE_VIEW_DEPTH_NON_FINITE = 11u;
+const uint PROJECTION_FAILURE_CONIC_NON_FINITE = 12u;
+const uint PROJECTION_FAILURE_COLOR_NON_FINITE = 13u;
 
 float ease_out_cubic(in float x) {
 	float a = 1.0 - x;
@@ -177,8 +208,58 @@ uvec4 get_rect(in vec2 image_pos, in float radius, in uvec2 grid_size) {
 		clamp(ceil((image_pos + radius) / TILE_SIZE), vec2(0), grid_size));
 }
 
+
+bool any_non_finite(in vec2 value) {
+	return any(isnan(value)) || any(isinf(value));
+}
+
+bool any_non_finite(in vec3 value) {
+	return any(isnan(value)) || any(isinf(value));
+}
+
+bool any_non_finite(in vec4 value) {
+	return any(isnan(value)) || any(isinf(value));
+}
+
+void record_projection_failure(in uint id, in uint stage, in uint flag, in uint value0, in uint value1) {
+	atomicOr(projection_probe[PROJECTION_PROBE_ERROR_FLAGS], flag);
+	atomicAdd(projection_probe[PROJECTION_PROBE_GUARD_ABORT_COUNT], 1u);
+	if (flag == PROJECTION_ERROR_FLAG_NON_FINITE) {
+		atomicAdd(projection_probe[PROJECTION_PROBE_NON_FINITE_FAILURE_COUNT], 1u);
+	}
+	if (flag == PROJECTION_ERROR_FLAG_SORT_OVERFLOW) {
+		atomicAdd(projection_probe[PROJECTION_PROBE_SORT_OVERFLOW_GUARD_COUNT], 1u);
+	}
+	if (flag == PROJECTION_ERROR_FLAG_TILE_OOB || flag == PROJECTION_ERROR_FLAG_RECT_INVALID) {
+		atomicAdd(projection_probe[PROJECTION_PROBE_TILE_GUARD_COUNT], 1u);
+	}
+	if (atomicCompSwap(projection_probe[PROJECTION_PROBE_FIRST_FAILURE_STAGE], PROJECTION_FAILURE_NONE, stage) == PROJECTION_FAILURE_NONE) {
+		projection_probe[PROJECTION_PROBE_FIRST_FAILURE_ID] = id;
+		projection_probe[PROJECTION_PROBE_FIRST_FAILURE_VALUE0] = value0;
+		projection_probe[PROJECTION_PROBE_FIRST_FAILURE_VALUE1] = value1;
+	}
+}
+
+bool reserve_sort_range(in uint num_tiles_touched, out uint sort_buffer_offset, out uint requested_sort_end) {
+	uint sort_capacity = projection_probe[PROJECTION_PROBE_SORT_CAPACITY];
+	for (;;) {
+		uint current_size = sort_buffer_size;
+		requested_sort_end = current_size + num_tiles_touched;
+		atomicMax(projection_probe[PROJECTION_PROBE_MAX_REQUESTED_SORT_END], requested_sort_end);
+		if (requested_sort_end < current_size || requested_sort_end > sort_capacity) {
+			sort_buffer_offset = current_size;
+			return false;
+		}
+		uint previous_size = atomicCompSwap(sort_buffer_size, current_size, requested_sort_end);
+		if (previous_size == current_size) {
+			sort_buffer_offset = current_size;
+			return true;
+		}
+	}
+}
+
 void main() {
-	const int id = int(gl_GlobalInvocationID.x);
+	const uint id = gl_GlobalInvocationID.x;
 	const uvec2 grid_size = (dims + TILE_SIZE - 1) / TILE_SIZE;
 
 	if (id >= uint(point_count)) return;
@@ -202,7 +283,15 @@ void main() {
 	mat3 world_covariance = object_linear * DECODE_COVARIANCE(splat.covariance) * transpose(object_linear);
 	vec4 world_pos = model_matrix * vec4(splat.position, 1.0);
 	vec4 view_pos = view_matrix * world_pos;
+	if (any_non_finite(view_pos.xyz)) {
+		record_projection_failure(id, PROJECTION_FAILURE_VIEW_POS_NON_FINITE, PROJECTION_ERROR_FLAG_NON_FINITE, floatBitsToUint(view_pos.z), 0u);
+		return;
+	}
 	vec4 clip_pos = projection_matrix * view_pos;
+	if (any_non_finite(clip_pos)) {
+		record_projection_failure(id, PROJECTION_FAILURE_CLIP_POS_NON_FINITE, PROJECTION_ERROR_FLAG_NON_FINITE, floatBitsToUint(clip_pos.z), floatBitsToUint(clip_pos.w));
+		return;
+	}
 	vec2 view_bounds = clip_pos.ww*1.2;
 	if (any(lessThan(clip_pos.xyz, vec3(-view_bounds, 0.0))) || any(greaterThan(clip_pos.xyz, vec3(view_bounds, clip_pos.w)))) {
 		return;
@@ -217,21 +306,45 @@ void main() {
 	float splat_scale = mix(2.0, 1.0, time_factor_late);
 
 	const vec3 covariance = project_covariance(world_covariance, splat_scale, view_pos.xyz, dims);
+	if (any_non_finite(covariance)) {
+		record_projection_failure(id, PROJECTION_FAILURE_COVARIANCE_NON_FINITE, PROJECTION_ERROR_FLAG_NON_FINITE, floatBitsToUint(covariance.x), floatBitsToUint(covariance.z));
+		return;
+	}
 	float det = covariance.x*covariance.z - covariance.y*covariance.y;
+	if (isnan(det) || isinf(det)) {
+		record_projection_failure(id, PROJECTION_FAILURE_DETERMINANT_NON_FINITE, PROJECTION_ERROR_FLAG_NON_FINITE, floatBitsToUint(det), 0u);
+		return;
+	}
 	if (det == 0.0) return;
 
 	float mid = 0.5 * (covariance.x + covariance.z);
 	vec2 eigenvalues = mid + vec2(1, -1)*sqrt(max(0.1, mid*mid - det));
+	if (any_non_finite(eigenvalues)) {
+		record_projection_failure(id, PROJECTION_FAILURE_EIGENVALUES_NON_FINITE, PROJECTION_ERROR_FLAG_NON_FINITE, floatBitsToUint(eigenvalues.x), floatBitsToUint(eigenvalues.y));
+		return;
+	}
 	if (any(lessThan(eigenvalues, vec2(0)))) return;
 
 	vec3 ndc_pos = clip_pos.xyz / clip_pos.w;
 	vec2 image_pos = ((ndc_pos.xy + 1.0)*0.5 - vec2(1,0.75)*(1.0 - time_factor)) * (dims - 1);
+	if (any_non_finite(image_pos)) {
+		record_projection_failure(id, PROJECTION_FAILURE_IMAGE_POS_NON_FINITE, PROJECTION_ERROR_FLAG_NON_FINITE, floatBitsToUint(image_pos.x), floatBitsToUint(image_pos.y));
+		return;
+	}
 
 	// We bias the radius (w/ base=2.5x standard deviation) such that low opacity splats cover
 	// fewer screen tiles. This has the effect of making the image *slightly* brighter while
 	// minimizing perceptible tile artifacts.
 	float radius = pow(splat_opacity, 0.2) * 2.5*sqrt(max(eigenvalues.x, eigenvalues.y));
+	if (isnan(radius) || isinf(radius)) {
+		record_projection_failure(id, PROJECTION_FAILURE_RADIUS_NON_FINITE, PROJECTION_ERROR_FLAG_NON_FINITE, floatBitsToUint(radius), 0u);
+		return;
+	}
 	uvec4 rect_bounds = get_rect(image_pos, radius, grid_size);
+	if (rect_bounds.x > rect_bounds.z || rect_bounds.y > rect_bounds.w) {
+		record_projection_failure(id, PROJECTION_FAILURE_RECT_INVALID, PROJECTION_ERROR_FLAG_RECT_INVALID, rect_bounds.x, rect_bounds.z);
+		return;
+	}
 	uint num_tiles_touched = (rect_bounds.z - rect_bounds.x)*(rect_bounds.w - rect_bounds.y);
 	atomicAdd(projection_probe[PROJECTION_PROBE_VISIBLE_SPLATS], 1u);
 	atomicMax(projection_probe[PROJECTION_PROBE_MAX_TILES_TOUCHED], num_tiles_touched);
@@ -241,17 +354,39 @@ void main() {
 		return;
 	}
 
+	uint tile_capacity = projection_probe[PROJECTION_PROBE_TILE_CAPACITY];
+	uint rect_max_tile_id = (rect_bounds.w - 1u) * grid_size.x + (rect_bounds.z - 1u);
+	atomicMax(projection_probe[PROJECTION_PROBE_MAX_REQUESTED_TILE_ID], rect_max_tile_id);
+	if (rect_max_tile_id >= tile_capacity) {
+		record_projection_failure(id, PROJECTION_FAILURE_TILE_ID_OOB, PROJECTION_ERROR_FLAG_TILE_OOB, rect_max_tile_id, tile_capacity);
+		return;
+	}
+
+	uint sort_buffer_offset = 0u;
+	uint requested_sort_end = 0u;
+	if (!reserve_sort_range(num_tiles_touched, sort_buffer_offset, requested_sort_end)) {
+		record_projection_failure(id, PROJECTION_FAILURE_SORT_OVERFLOW, PROJECTION_ERROR_FLAG_SORT_OVERFLOW, sort_buffer_offset, requested_sort_end);
+		return;
+	}
 	atomicAdd(projection_probe[PROJECTION_PROBE_DUPLICATED_SPLATS], 1u);
 	atomicAdd(projection_probe[PROJECTION_PROBE_EMITTED_SORT_ELEMENTS], num_tiles_touched);
-	const uint buffer_size = atomicAdd(sort_buffer_size, num_tiles_touched);
-	uint sort_buffer_offset = buffer_size;
-	atomicMax(projection_probe[PROJECTION_PROBE_MAX_SORT_END], sort_buffer_offset + num_tiles_touched);
+	atomicMax(projection_probe[PROJECTION_PROBE_MAX_SORT_END], requested_sort_end);
 	vec3 view_dir = normalize(world_pos.xyz - camera_pos);
+	vec3 conic = vec3(covariance.z, -covariance.y, covariance.x) / det;
+	if (any_non_finite(conic)) {
+		record_projection_failure(id, PROJECTION_FAILURE_CONIC_NON_FINITE, PROJECTION_ERROR_FLAG_NON_FINITE, floatBitsToUint(conic.x), floatBitsToUint(conic.z));
+		return;
+	}
+	vec4 color = vec4(get_color(view_dir, splat.sh_coefficients), splat_opacity);
+	if (any_non_finite(color)) {
+		record_projection_failure(id, PROJECTION_FAILURE_COLOR_NON_FINITE, PROJECTION_ERROR_FLAG_NON_FINITE, floatBitsToUint(color.x), floatBitsToUint(color.w));
+		return;
+	}
 
 	RasterizeData data;
 	data.image_pos = image_pos;
-	data.conic = vec3(covariance.z, -covariance.y, covariance.x) / det; // Inverse 2D covariance
-	data.color = vec4(get_color(view_dir, splat.sh_coefficients), splat_opacity);
+	data.conic = conic; // Inverse 2D covariance
+	data.color = color;
 	data.pos_xy = world_pos.xy;
 	data.pos_z = world_pos.z;
 	data.depth_data = vec4(-view_pos.z, 0.0, 0.0, 0.0);
@@ -262,11 +397,19 @@ void main() {
 	// Use clip-space w as a monotonic distance proxy so ordering stays front-to-back
 	// even when the renderer uses reverse-z projection.
 	float view_depth = max(0.0, clip_pos.w);
+	if (isnan(view_depth) || isinf(view_depth)) {
+		record_projection_failure(id, PROJECTION_FAILURE_VIEW_DEPTH_NON_FINITE, PROJECTION_ERROR_FLAG_NON_FINITE, floatBitsToUint(view_depth), 0u);
+		return;
+	}
 	float depth01 = view_depth / (1.0 + view_depth);
 	uint depth = uint(depth01 * 65535.0) & 0xFFFF;
 	for (uint y = rect_bounds.y; y < rect_bounds.w; ++y)
 	for (uint x = rect_bounds.x; x < rect_bounds.z; ++x) {
 		uint tile_id = y*grid_size.x + x;
+		if (tile_id >= tile_capacity) {
+			record_projection_failure(id, PROJECTION_FAILURE_TILE_ID_OOB, PROJECTION_ERROR_FLAG_TILE_OOB, tile_id, tile_capacity);
+			return;
+		}
 		atomicMax(projection_probe[PROJECTION_PROBE_MAX_TILE_ID], tile_id);
 		uint key = (tile_id << 16) | depth;
 		sort_keys[sort_buffer_offset] = key;

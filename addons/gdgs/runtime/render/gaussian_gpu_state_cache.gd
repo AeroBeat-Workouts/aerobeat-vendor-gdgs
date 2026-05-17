@@ -14,7 +14,7 @@ const FLOATS_PER_SPLAT := 60
 const FLOATS_PER_CULLED_SPLAT := 16
 const BYTES_PER_FLOAT := 4
 const MAX_SORT_ELEMENTS_PER_SPLAT := 10
-const PROJECTION_PROBE_WORDS := 13
+const PROJECTION_PROBE_WORDS := 24
 
 const SHADER_PATH_PROJECTION := "res://addons/gdgs/runtime/render/shaders/compute/gsplat_projection.glsl"
 const SHADER_PATH_RADIX_UPSWEEP := "res://addons/gdgs/runtime/render/shaders/compute/radix_sort_upsweep.glsl"
