@@ -26,8 +26,12 @@ While the scene is running:
   - `Scene Depth`
   - `Depth Reject Mask`
 - `I` — toggle `ignore_scene_depth_in_composite`
+- `P` — cycle the `SplatAnchor` parent position preset
+- `R` — cycle the `SplatAnchor` parent rotation preset
+- `S` — cycle the `SplatAnchor` parent scale preset
+- `V` — print a transform verification snapshot to the log
 
-The HUD in the top-left corner shows the current state after each change.
+The HUD in the top-left corner shows the current render-path state, the current parent transform preset values, the splat node's resulting global transform, and the registry-side snapshot that will be uploaded for rendering.
 
 ## Intended matrix order
 
@@ -57,6 +61,12 @@ The compositor path now logs once per run to prove:
 - whether `render_for_compositor()` returned valid textures
 - whether `No Present` captured valid textures while skipping all writeback/presentation work
 - whether a compositor dispatch was about to run
+
+The transform harness now also logs:
+
+- the selected parent position / rotation / scale preset values
+- the splat node's resulting global transform
+- a registry-side debug snapshot of the instance transform and visibility state headed for upload
 
 The renderer also logs once when it prepares compositor render targets.
 

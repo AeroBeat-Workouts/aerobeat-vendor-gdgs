@@ -58,6 +58,12 @@ func render_for_compositor(
 		depth_capture_alpha
 	)
 
+func get_debug_instance_entries() -> Array[Dictionary]:
+	return _scene_registry.get_debug_instance_entries()
+
+func get_debug_instance_entry(node: Node) -> Dictionary:
+	return _scene_registry.get_debug_instance_entry(node)
+
 func _cleanup_on_render_thread() -> void:
 	_gpu_state_cache.cleanup_all()
 

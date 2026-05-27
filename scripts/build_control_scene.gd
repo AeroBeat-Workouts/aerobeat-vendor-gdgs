@@ -26,10 +26,15 @@ func _initialize() -> void:
 		printerr("Failed to load GaussianSplatNode script: %s" % GAUSSIAN_SPLAT_NODE_SCRIPT_PATH)
 		quit(1)
 		return
+	var splat_anchor := Node3D.new()
+	splat_anchor.name = "SplatAnchor"
+	root.add_child(splat_anchor)
+	splat_anchor.owner = root
+
 	var gaussian_splat_node: Node = gaussian_splat_node_script.new()
 	gaussian_splat_node.name = "GaussianSplatNode"
 	gaussian_splat_node.gaussian = sample
-	root.add_child(gaussian_splat_node)
+	splat_anchor.add_child(gaussian_splat_node)
 	gaussian_splat_node.owner = root
 
 	var world_environment := WorldEnvironment.new()
@@ -69,8 +74,8 @@ func _initialize() -> void:
 	margin.name = "HudMargin"
 	margin.offset_left = 16.0
 	margin.offset_top = 16.0
-	margin.offset_right = 520.0
-	margin.offset_bottom = 220.0
+	margin.offset_right = 780.0
+	margin.offset_bottom = 420.0
 	canvas_layer.add_child(margin)
 	margin.owner = root
 
@@ -81,7 +86,7 @@ func _initialize() -> void:
 	info.bbcode_enabled = true
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info.text = "[b]GDGS render-path tweak harness[/b]\nSample: res://samples/assets/demo.compressed.ply\n\nControls\n- [b]C[/b]: toggle compositor effect enabled\n- [b]M[/b]: cycle display_mode\n- [b]D[/b]: cycle debug_view\n- [b]I[/b]: toggle ignore_scene_depth_in_composite\n\nDisplay modes\n- Compositor\n- Direct Texture (World Overlay)\n- Direct Texture (Canvas Overlay)\n- No Present"
+	info.text = "[b]GDGS render-path tweak harness[/b]\nSample: res://samples/assets/demo.compressed.ply\n\nControls\n- [b]C[/b]: toggle compositor effect enabled\n- [b]M[/b]: cycle display_mode\n- [b]D[/b]: cycle debug_view\n- [b]I[/b]: toggle ignore_scene_depth_in_composite\n- [b]P[/b]: cycle parent position preset\n- [b]R[/b]: cycle parent rotation preset\n- [b]S[/b]: cycle parent scale preset\n- [b]V[/b]: print transform verification snapshot\n\nDisplay modes\n- Compositor\n- Direct Texture (World Overlay)\n- Direct Texture (Canvas Overlay)\n- No Present"
 	margin.add_child(info)
 	info.owner = root
 

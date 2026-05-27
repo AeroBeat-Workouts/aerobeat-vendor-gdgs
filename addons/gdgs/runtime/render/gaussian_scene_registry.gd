@@ -61,6 +61,28 @@ func get_instance_count() -> int:
 func get_instance_transforms_byte() -> PackedByteArray:
 	return _instance_transforms_byte
 
+func get_debug_instance_entries() -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	for node in _splat_nodes:
+		if not is_instance_valid(node):
+			continue
+		var entry := _node_entries.get(node.get_instance_id(), null)
+		if entry == null:
+			continue
+		entries.push_back(_debug_entry_for_node(node, entry))
+	entries.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a.get("instance_index", -1)) < int(b.get("instance_index", -1))
+	)
+	return entries
+
+func get_debug_instance_entry(node: Node) -> Dictionary:
+	if node == null or not is_instance_valid(node):
+		return {}
+	var entry := _node_entries.get(node.get_instance_id(), null)
+	if entry == null:
+		return {}
+	return _debug_entry_for_node(node, entry)
+
 func _sync_scene_resources(force_rebuild: bool) -> Dictionary:
 	_prune_splat_nodes()
 
@@ -205,6 +227,16 @@ func _get_node_transform(node: Node) -> Transform3D:
 	if node is Node3D:
 		return (node as Node3D).global_transform
 	return Transform3D.IDENTITY
+
+func _debug_entry_for_node(node: Node, entry: NodeEntry) -> Dictionary:
+	return {
+		"node_path": str(node.get_path()),
+		"instance_id": node.get_instance_id(),
+		"instance_index": entry.instance_index,
+		"point_count": entry.point_count,
+		"visible": entry.visible,
+		"model_transform": entry.model_transform
+	}
 	
 func _get_node_visibility(node: Node) -> bool:
 	if node is Node3D:
