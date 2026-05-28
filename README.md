@@ -11,7 +11,7 @@ This repo is the **vendor lane** only.
 - It stores the pinned upstream plugin payload under `addons/gdgs/`.
 - It is **not** the AeroBeat-facing runtime API surface.
 - Product/testbed repos should consume the stable AeroBeat wrapper from
-  `aerobeat-tool-gaussian-splat`.
+  `aerobeat-tool-gaussian-splat-loader`.
 - When a GodotEnv manifest needs the raw plugin path for runtime/editor support,
   it should point to this repo's `addons/gdgs` subfolder rather than fetching
   third-party upstream directly.
@@ -52,7 +52,7 @@ Use the repo URL with the `addons/gdgs` subfolder so the installed addon lands a
 restore helpers live in the consuming repos that own the GodotEnv workbenches.
 For the current AeroBeat consumers, use:
 
-- `aerobeat-tool-gaussian-splat/scripts/restore-testbed-addons.sh`
+- `aerobeat-tool-gaussian-splat-loader/scripts/restore-testbed-addons.sh`
 - `aerobeat-environment-community/scripts/restore-testbed-addons.sh`
 
 Those helpers clear the generated install targets first (`.testbed/addons/*`
