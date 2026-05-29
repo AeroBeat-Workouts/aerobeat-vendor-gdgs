@@ -24,3 +24,7 @@ mono_crash.*.json
 .claude/
 CLAUDE.md
 AGENTS.md
+
+.testbed/addons/*
+!.testbed/addons/.editorconfig
+.testbed/.addons/

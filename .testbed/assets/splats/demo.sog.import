@@ -4,12 +4,12 @@ importer="gaussian.splat.importer"
 importer_version=5
 type="Resource"
 uid="uid://r3pplhb3qqyk"
-path="res://.godot/imported/demo.sog-2b00a1bff26db23bdc6071d723c7273e.res"
+path="res://.godot/imported/demo.sog-27996f8ec6ee571627d0a20da71aa01a.res"
 
 [deps]
 
-source_file="res://samples/assets/demo.sog"
-dest_files=["res://.godot/imported/demo.sog-2b00a1bff26db23bdc6071d723c7273e.res"]
+source_file="res://assets/splats/demo.sog"
+dest_files=["res://.godot/imported/demo.sog-27996f8ec6ee571627d0a20da71aa01a.res"]
 
 [params]
 
