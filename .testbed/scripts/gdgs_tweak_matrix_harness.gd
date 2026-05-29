@@ -61,27 +61,87 @@ const SCALE_PRESETS := [
 	}
 ]
 
+const DEFAULT_SPLAT_SOURCE := "res://assets/splats/demo.compressed.ply"
 const MANAGER_NODE_NAME := "_GdgsGaussianRenderManager"
+const MOUSE_LOOK_SENSITIVITY := 0.0035
+const CAMERA_MOVE_SPEED := 4.0
 
 var _position_preset_index := 0
 var _rotation_preset_index := 0
 var _scale_preset_index := 0
+var _is_mouse_drag_active := false
+var _is_loading := false
+var _loaded_source := DEFAULT_SPLAT_SOURCE
+var _load_status_message := "Ready."
 
 @onready var _splat_anchor := $SplatAnchor as Node3D
 @onready var _splat_node := $SplatAnchor/GaussianSplatNode as Node3D
 @onready var _world_environment := $WorldEnvironment as WorldEnvironment
-@onready var _hud_label := $CanvasLayer/HudMargin/HudLabel as RichTextLabel
+@onready var _camera_rig := $CameraRig as Node3D
+@onready var _camera_pitch := $CameraRig/CameraPitch as Node3D
+@onready var _camera := $CameraRig/CameraPitch/Camera3D as Camera3D
+@onready var _hud_label := $CanvasLayer/HudMargin/HudPanel/HudVBox/HudLabel as RichTextLabel
+@onready var _source_line_edit := $CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls/SourceRow/SourceLineEdit as LineEdit
+@onready var _browse_button := $CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls/ActionRow/BrowseButton as Button
+@onready var _load_button := $CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls/ActionRow/LoadButton as Button
+@onready var _unload_button := $CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls/ActionRow/UnloadButton as Button
+@onready var _status_label := $CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls/StatusLabel as Label
+@onready var _browse_dialog := $CanvasLayer/BrowseDialog as FileDialog
+@onready var _runtime_loader := $RuntimeSplatLoader as Node
 
 func _ready() -> void:
 	_sync_transform_preset_indices()
+	if _source_line_edit != null:
+		_source_line_edit.text = DEFAULT_SPLAT_SOURCE
+		_source_line_edit.text_submitted.connect(_on_source_text_submitted)
+	if _browse_button != null:
+		_browse_button.pressed.connect(_on_browse_pressed)
+	if _load_button != null:
+		_load_button.pressed.connect(_on_load_pressed)
+	if _unload_button != null:
+		_unload_button.pressed.connect(_on_unload_pressed)
+	if _browse_dialog != null:
+		_browse_dialog.file_selected.connect(_on_browse_file_selected)
+	_set_status("Ready.")
 	_update_hud()
-	print("[gdgs-harness] Controls: C toggle compositor effect, M cycle display mode, D cycle debug view, I toggle composite depth bypass, P cycle parent position preset, R cycle parent rotation preset, S cycle parent scale preset, V print transform verification snapshot")
+	print("[gdgs-harness] Controls: hold left mouse button to look, use WASD while dragging to move camera, Browse/Load/Unload for runtime splat swaps, C toggle compositor effect, M cycle display mode, D cycle debug view, I toggle composite depth bypass, P cycle parent position preset, R cycle parent rotation preset, S cycle parent scale preset, V print transform verification snapshot")
 	call_deferred("_refresh_registry_snapshot_after_registration")
 
+func _process(delta: float) -> void:
+	if _is_loading or not _is_mouse_drag_active or _camera_rig == null:
+		return
+
+	var movement := Vector3.ZERO
+	if Input.is_key_pressed(KEY_W):
+		movement -= _camera_rig.global_basis.z
+	if Input.is_key_pressed(KEY_S):
+		movement += _camera_rig.global_basis.z
+	if Input.is_key_pressed(KEY_A):
+		movement -= _camera_rig.global_basis.x
+	if Input.is_key_pressed(KEY_D):
+		movement += _camera_rig.global_basis.x
+
+	movement.y = 0.0
+	if movement.is_zero_approx():
+		return
+
+	_camera_rig.global_position += movement.normalized() * CAMERA_MOVE_SPEED * delta
+	_update_hud()
+
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		_handle_mouse_button_event(event)
+		return
+
+	if event is InputEventMouseMotion and _is_mouse_drag_active:
+		_handle_mouse_motion_event(event)
+		return
+
 	if not (event is InputEventKey):
 		return
 	if not event.pressed or event.echo:
+		return
+	if _is_mouse_drag_active and event.keycode in [KEY_W, KEY_A, KEY_S, KEY_D]:
 		return
 
 	match event.keycode:
@@ -121,6 +181,25 @@ func _unhandled_input(event: InputEvent) -> void:
 			_cycle_scale_preset()
 		KEY_V:
 			_print_transform_snapshot()
+
+func _handle_mouse_button_event(event: InputEventMouseButton) -> void:
+	if event.button_index != MOUSE_BUTTON_LEFT:
+		return
+	if event.pressed:
+		_is_mouse_drag_active = true
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	else:
+		_is_mouse_drag_active = false
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	_update_hud()
+
+func _handle_mouse_motion_event(event: InputEventMouseMotion) -> void:
+	if _camera_rig == null or _camera_pitch == null:
+		return
+	_camera_rig.rotate_y(-event.relative.x * MOUSE_LOOK_SENSITIVITY)
+	_camera_pitch.rotate_x(-event.relative.y * MOUSE_LOOK_SENSITIVITY)
+	_camera_pitch.rotation.x = clampf(_camera_pitch.rotation.x, deg_to_rad(-89.0), deg_to_rad(89.0))
+	_update_hud()
 
 func _cycle_position_preset() -> void:
 	_position_preset_index = (_position_preset_index + 1) % POSITION_PRESETS.size()
@@ -208,15 +287,41 @@ func _update_hud() -> void:
 		]
 		registry_state = _format_registry_state(_get_registry_snapshot_for_splat())
 
-	_hud_label.text = "[b]GDGS render-path tweak harness[/b]\nSample: res://samples/assets/demo.compressed.ply\n\nControls\n- [b]C[/b]: toggle compositor effect enabled\n- [b]M[/b]: cycle display_mode\n- [b]D[/b]: cycle debug_view\n- [b]I[/b]: toggle ignore_scene_depth_in_composite\n- [b]P[/b]: cycle parent [i]position[/i] preset\n- [b]R[/b]: cycle parent [i]rotation[/i] preset\n- [b]S[/b]: cycle parent [i]scale[/i] preset\n- [b]V[/b]: print transform verification snapshot\n\nDisplay modes\n- Compositor\n- Direct Texture (World Overlay)\n- Direct Texture (Canvas Overlay)\n- No Present\n\nCurrent\n- effect enabled: %s\n- display_mode: %s\n- debug_view: %s\n- ignore scene depth in composite: %s\n\nParent anchor\n- %s\n\nSplat global transform\n- %s\n\nRegistry upload snapshot\n- %s" % [
+	var camera_state := "unavailable"
+	if _camera_rig != null and _camera_pitch != null:
+		camera_state = "position=%s\n  yaw=%.2f pitch=%.2f\n  drag-look=%s" % [
+			_var_to_pretty(_camera_rig.global_position),
+			rad_to_deg(_camera_rig.rotation.y),
+			rad_to_deg(_camera_pitch.rotation.x),
+			"active" if _is_mouse_drag_active else "idle"
+		]
+
+	var sample_name := "<unloaded>"
+	if _splat_node != null and _splat_node.get("gaussian") != null:
+		sample_name = _loaded_source
+
+	_hud_label.text = "[b]GDGS render-path tweak harness[/b]\nLoaded source: %s\n\nCamera controls\n- Hold [b]Left Mouse[/b]: look / drag camera\n- While dragging: [b]WASD[/b] move camera\n\nRender-path controls\n- [b]C[/b]: toggle compositor effect enabled\n- [b]M[/b]: cycle display_mode\n- [b]D[/b]: cycle debug_view\n- [b]I[/b]: toggle ignore_scene_depth_in_composite\n- [b]P[/b]: cycle parent [i]position[/i] preset\n- [b]R[/b]: cycle parent [i]rotation[/i] preset\n- [b]S[/b]: cycle parent [i]scale[/i] preset\n- [b]V[/b]: print transform verification snapshot\n\nCurrent render state\n- effect enabled: %s\n- display_mode: %s\n- debug_view: %s\n- ignore scene depth in composite: %s\n\nCamera\n- %s\n\nParent anchor\n- %s\n\nSplat global transform\n- %s\n\nRegistry upload snapshot\n- %s" % [
+		sample_name,
 		str(effect.enabled),
 		_display_mode_name(int(effect.display_mode)),
 		_debug_view_name(int(effect.debug_view)),
 		str(bool(effect.ignore_scene_depth_in_composite)),
+		camera_state,
 		anchor_state,
 		global_state,
 		registry_state
 	]
+
+	if _status_label != null:
+		_status_label.text = _load_status_message
+	if _load_button != null:
+		_load_button.disabled = _is_loading
+	if _unload_button != null:
+		_unload_button.disabled = _is_loading
+	if _browse_button != null:
+		_browse_button.disabled = _is_loading
+	if _source_line_edit != null:
+		_source_line_edit.editable = not _is_loading
 
 func _get_registry_snapshot_for_splat() -> Dictionary:
 	if _splat_node == null:
@@ -259,6 +364,68 @@ func _refresh_registry_snapshot_after_registration() -> void:
 	await tree.process_frame
 	await tree.process_frame
 	_print_transform_snapshot()
+
+func _on_browse_pressed() -> void:
+	if _browse_dialog == null:
+		return
+	var current_text := _source_line_edit.text.strip_edges() if _source_line_edit != null else ""
+	if current_text.begins_with("/") and FileAccess.file_exists(current_text):
+		_browse_dialog.current_path = current_text
+	_browse_dialog.popup_centered_ratio(0.75)
+
+func _on_browse_file_selected(path: String) -> void:
+	if _source_line_edit != null:
+		_source_line_edit.text = path
+	_set_status("Selected %s" % path)
+	_update_hud()
+
+func _on_source_text_submitted(_submitted_text: String) -> void:
+	_load_from_input_source()
+
+func _on_load_pressed() -> void:
+	_load_from_input_source()
+
+func _load_from_input_source() -> void:
+	if _is_loading or _runtime_loader == null or _source_line_edit == null:
+		return
+	var source := _source_line_edit.text.strip_edges()
+	if source.is_empty():
+		_set_status("Enter a source path or URL before loading.")
+		_update_hud()
+		return
+
+	_is_loading = true
+	_set_status("Loading %s ..." % source)
+	_update_hud()
+
+	var result: Dictionary = await _runtime_loader.load_from_source(source)
+	if result.get("ok", false):
+		if _splat_node != null:
+			_splat_node.set("gaussian", result["resource"])
+		_loaded_source = String(result.get("resolved_source", source))
+		_set_status(result.get("message", "Load complete."))
+		print("[gdgs-harness] %s" % _load_status_message)
+	else:
+		_set_status("Load failed: %s" % result.get("message", "Unknown error"))
+		printerr("[gdgs-harness] %s" % _load_status_message)
+
+	_is_loading = false
+	_update_hud()
+	call_deferred("_print_transform_snapshot")
+
+func _on_unload_pressed() -> void:
+	if _is_loading:
+		return
+	if _splat_node != null:
+		_splat_node.set("gaussian", null)
+	_loaded_source = "<unloaded>"
+	_set_status("Unloaded GaussianResource from persistent GaussianSplatNode.")
+	print("[gdgs-harness] %s" % _load_status_message)
+	_update_hud()
+	call_deferred("_print_transform_snapshot")
+
+func _set_status(message: String) -> void:
+	_load_status_message = message
 
 func _get_manager() -> Node:
 	var tree := get_tree()

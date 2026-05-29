@@ -2,13 +2,15 @@ extends SceneTree
 
 const SCENE_PATH := "res://scenes/gdgs_happy_path_control.tscn"
 const SAMPLE_ASSET_PATHS := [
-	"res://samples/assets/demo.compressed.ply",
-	"res://samples/assets/demo.ply",
-	"res://samples/assets/demo.sog",
+	"res://assets/splats/demo.compressed.ply",
+	"res://assets/splats/demo.ply",
+	"res://assets/splats/demo.sog",
 ]
+const DEFAULT_SOURCE_PATH := "res://assets/splats/demo.compressed.ply"
 const COMPOSITOR_EFFECT_SCRIPT_PATH := "res://addons/gdgs/runtime/compositor/gaussian_compositor_effect.gd"
 const GAUSSIAN_SPLAT_NODE_SCRIPT_PATH := "res://addons/gdgs/runtime/nodes/gaussian_splat_node.gd"
 const HARNESS_SCRIPT_PATH := "res://scripts/gdgs_tweak_matrix_harness.gd"
+const RUNTIME_LOADER_SCRIPT_PATH := "res://scripts/gdgs_runtime_splat_loader.gd"
 
 func _initialize() -> void:
 	var sample := _load_sample_resource()
@@ -26,6 +28,7 @@ func _initialize() -> void:
 		printerr("Failed to load GaussianSplatNode script: %s" % GAUSSIAN_SPLAT_NODE_SCRIPT_PATH)
 		quit(1)
 		return
+
 	var splat_anchor := Node3D.new()
 	splat_anchor.name = "SplatAnchor"
 	root.add_child(splat_anchor)
@@ -51,12 +54,22 @@ func _initialize() -> void:
 	root.add_child(world_environment)
 	world_environment.owner = root
 
+	var camera_rig := Node3D.new()
+	camera_rig.name = "CameraRig"
+	camera_rig.position = Vector3(0.0, 0.0, 4.0)
+	root.add_child(camera_rig)
+	camera_rig.owner = root
+
+	var camera_pitch := Node3D.new()
+	camera_pitch.name = "CameraPitch"
+	camera_rig.add_child(camera_pitch)
+	camera_pitch.owner = root
+
 	var camera := Camera3D.new()
 	camera.name = "Camera3D"
-	camera.position = Vector3(0.0, 0.0, 4.0)
 	camera.near = 0.05
 	camera.far = 100.0
-	root.add_child(camera)
+	camera_pitch.add_child(camera)
 	camera.owner = root
 
 	var sun := DirectionalLight3D.new()
@@ -64,6 +77,12 @@ func _initialize() -> void:
 	sun.rotation_degrees = Vector3(-35.0, 25.0, 0.0)
 	root.add_child(sun)
 	sun.owner = root
+
+	var runtime_loader := Node.new()
+	runtime_loader.name = "RuntimeSplatLoader"
+	runtime_loader.set_script(load(RUNTIME_LOADER_SCRIPT_PATH))
+	root.add_child(runtime_loader)
+	runtime_loader.owner = root
 
 	var canvas_layer := CanvasLayer.new()
 	canvas_layer.name = "CanvasLayer"
@@ -74,10 +93,20 @@ func _initialize() -> void:
 	margin.name = "HudMargin"
 	margin.offset_left = 16.0
 	margin.offset_top = 16.0
-	margin.offset_right = 780.0
-	margin.offset_bottom = 420.0
+	margin.offset_right = 900.0
+	margin.offset_bottom = 700.0
 	canvas_layer.add_child(margin)
 	margin.owner = root
+
+	var panel := PanelContainer.new()
+	panel.name = "HudPanel"
+	margin.add_child(panel)
+	panel.owner = root
+
+	var hud_vbox := VBoxContainer.new()
+	hud_vbox.name = "HudVBox"
+	panel.add_child(hud_vbox)
+	hud_vbox.owner = root
 
 	var info := RichTextLabel.new()
 	info.name = "HudLabel"
@@ -86,9 +115,76 @@ func _initialize() -> void:
 	info.bbcode_enabled = true
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info.text = "[b]GDGS render-path tweak harness[/b]\nSample: res://samples/assets/demo.compressed.ply\n\nControls\n- [b]C[/b]: toggle compositor effect enabled\n- [b]M[/b]: cycle display_mode\n- [b]D[/b]: cycle debug_view\n- [b]I[/b]: toggle ignore_scene_depth_in_composite\n- [b]P[/b]: cycle parent position preset\n- [b]R[/b]: cycle parent rotation preset\n- [b]S[/b]: cycle parent scale preset\n- [b]V[/b]: print transform verification snapshot\n\nDisplay modes\n- Compositor\n- Direct Texture (World Overlay)\n- Direct Texture (Canvas Overlay)\n- No Present"
-	margin.add_child(info)
+	info.custom_minimum_size = Vector2(700.0, 0.0)
+	info.text = "[b]GDGS render-path tweak harness[/b]\nLoaded source: %s" % DEFAULT_SOURCE_PATH
+	hud_vbox.add_child(info)
 	info.owner = root
+
+	var separator := HSeparator.new()
+	separator.name = "HudSeparator"
+	hud_vbox.add_child(separator)
+	separator.owner = root
+
+	var loader_controls := VBoxContainer.new()
+	loader_controls.name = "LoaderControls"
+	hud_vbox.add_child(loader_controls)
+	loader_controls.owner = root
+
+	var source_row := HBoxContainer.new()
+	source_row.name = "SourceRow"
+	loader_controls.add_child(source_row)
+	source_row.owner = root
+
+	var source_line_edit := LineEdit.new()
+	source_line_edit.name = "SourceLineEdit"
+	source_line_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	source_line_edit.placeholder_text = "res://assets/splats/demo.compressed.ply | /absolute/path/file.ply | https://example.com/file.sog"
+	source_line_edit.text = DEFAULT_SOURCE_PATH
+	source_row.add_child(source_line_edit)
+	source_line_edit.owner = root
+
+	var action_row := HBoxContainer.new()
+	action_row.name = "ActionRow"
+	loader_controls.add_child(action_row)
+	action_row.owner = root
+
+	var browse_button := Button.new()
+	browse_button.name = "BrowseButton"
+	browse_button.text = "Browse…"
+	action_row.add_child(browse_button)
+	browse_button.owner = root
+
+	var load_button := Button.new()
+	load_button.name = "LoadButton"
+	load_button.text = "Load"
+	action_row.add_child(load_button)
+	load_button.owner = root
+
+	var unload_button := Button.new()
+	unload_button.name = "UnloadButton"
+	unload_button.text = "Unload"
+	action_row.add_child(unload_button)
+	unload_button.owner = root
+
+	var status_label := Label.new()
+	status_label.name = "StatusLabel"
+	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	status_label.text = "Ready."
+	loader_controls.add_child(status_label)
+	status_label.owner = root
+
+	var browse_dialog := FileDialog.new()
+	browse_dialog.name = "BrowseDialog"
+	browse_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	browse_dialog.access = FileDialog.ACCESS_FILESYSTEM
+	browse_dialog.title = "Choose a Gaussian Splat file"
+	browse_dialog.filters = PackedStringArray([
+		"*.ply ; Binary PLY",
+		"*.splat ; Legacy SPLAT",
+		"*.sog ; SOG archive"
+	])
+	canvas_layer.add_child(browse_dialog)
+	browse_dialog.owner = root
 
 	var packed := PackedScene.new()
 	var pack_error := packed.pack(root)
