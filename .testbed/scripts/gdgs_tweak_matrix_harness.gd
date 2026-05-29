@@ -65,6 +65,7 @@ const DEFAULT_SPLAT_SOURCE := "res://assets/splats/demo.compressed.ply"
 const MANAGER_NODE_NAME := "_GdgsGaussianRenderManager"
 const MOUSE_LOOK_SENSITIVITY := 0.0035
 const CAMERA_MOVE_SPEED := 4.0
+const CAMERA_SPEED_BOOST_MULTIPLIER := 2.5
 
 var _position_preset_index := 0
 var _rotation_preset_index := 0
@@ -73,6 +74,9 @@ var _is_mouse_drag_active := false
 var _is_loading := false
 var _loaded_source := DEFAULT_SPLAT_SOURCE
 var _load_status_message := "Ready."
+var _load_phase := "idle"
+var _load_progress := 0.0
+var _load_progress_known := false
 
 @onready var _splat_anchor := $SplatAnchor as Node3D
 @onready var _splat_node := $SplatAnchor/GaussianSplatNode as Node3D
@@ -86,6 +90,7 @@ var _load_status_message := "Ready."
 @onready var _load_button := $CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls/ActionRow/LoadButton as Button
 @onready var _unload_button := $CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls/ActionRow/UnloadButton as Button
 @onready var _status_label := $CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls/StatusLabel as Label
+@onready var _progress_bar := $CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls/LoadingProgressBar as ProgressBar
 @onready var _browse_dialog := $CanvasLayer/BrowseDialog as FileDialog
 @onready var _runtime_loader := $RuntimeSplatLoader as Node
 
@@ -102,9 +107,16 @@ func _ready() -> void:
 		_unload_button.pressed.connect(_on_unload_pressed)
 	if _browse_dialog != null:
 		_browse_dialog.file_selected.connect(_on_browse_file_selected)
+	if _runtime_loader != null:
+		if _runtime_loader.has_signal("load_started"):
+			_runtime_loader.load_started.connect(_on_runtime_loader_load_started)
+		if _runtime_loader.has_signal("load_progressed"):
+			_runtime_loader.load_progressed.connect(_on_runtime_loader_load_progressed)
+		if _runtime_loader.has_signal("load_finished"):
+			_runtime_loader.load_finished.connect(_on_runtime_loader_load_finished)
 	_set_status("Ready.")
 	_update_hud()
-	print("[gdgs-harness] Controls: hold left mouse button to look, use WASD while dragging to move camera, Browse/Load/Unload for runtime splat swaps, C toggle compositor effect, M cycle display mode, D cycle debug view, I toggle composite depth bypass, P cycle parent position preset, R cycle parent rotation preset, S cycle parent scale preset, V print transform verification snapshot")
+	print("[gdgs-harness] Controls: hold left mouse button to look, use WASD + Q/E while dragging to move camera, hold Shift while dragging for a speed boost, Browse/Load/Unload for runtime splat swaps, C toggle compositor effect, M cycle display mode, D cycle debug view, I toggle composite depth bypass, P cycle parent position preset, R cycle parent rotation preset, S cycle parent scale preset, V print transform verification snapshot")
 	call_deferred("_refresh_registry_snapshot_after_registration")
 
 func _process(delta: float) -> void:
@@ -122,10 +134,19 @@ func _process(delta: float) -> void:
 		movement += _camera_rig.global_basis.x
 
 	movement.y = 0.0
+	if Input.is_key_pressed(KEY_Q):
+		movement += Vector3.UP
+	if Input.is_key_pressed(KEY_E):
+		movement += Vector3.DOWN
+
 	if movement.is_zero_approx():
 		return
 
-	_camera_rig.global_position += movement.normalized() * CAMERA_MOVE_SPEED * delta
+	var move_speed := CAMERA_MOVE_SPEED
+	if Input.is_key_pressed(KEY_SHIFT):
+		move_speed *= CAMERA_SPEED_BOOST_MULTIPLIER
+
+	_camera_rig.global_position += movement.normalized() * move_speed * delta
 	_update_hud()
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -141,7 +162,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if not event.pressed or event.echo:
 		return
-	if _is_mouse_drag_active and event.keycode in [KEY_W, KEY_A, KEY_S, KEY_D]:
+	if _is_mouse_drag_active and event.keycode in [KEY_W, KEY_A, KEY_S, KEY_D, KEY_Q, KEY_E]:
 		return
 
 	match event.keycode:
@@ -289,19 +310,21 @@ func _update_hud() -> void:
 
 	var camera_state := "unavailable"
 	if _camera_rig != null and _camera_pitch != null:
-		camera_state = "position=%s\n  yaw=%.2f pitch=%.2f\n  drag-look=%s" % [
+		camera_state = "position=%s\n  yaw=%.2f pitch=%.2f\n  drag-look=%s\n  shift boost=%s" % [
 			_var_to_pretty(_camera_rig.global_position),
 			rad_to_deg(_camera_rig.rotation.y),
 			rad_to_deg(_camera_pitch.rotation.x),
-			"active" if _is_mouse_drag_active else "idle"
+			"active" if _is_mouse_drag_active else "idle",
+			"held" if Input.is_key_pressed(KEY_SHIFT) else "idle"
 		]
 
 	var sample_name := "<unloaded>"
 	if _splat_node != null and _splat_node.get("gaussian") != null:
 		sample_name = _loaded_source
 
-	_hud_label.text = "[b]GDGS render-path tweak harness[/b]\nLoaded source: %s\n\nCamera controls\n- Hold [b]Left Mouse[/b]: look / drag camera\n- While dragging: [b]WASD[/b] move camera\n\nRender-path controls\n- [b]C[/b]: toggle compositor effect enabled\n- [b]M[/b]: cycle display_mode\n- [b]D[/b]: cycle debug_view\n- [b]I[/b]: toggle ignore_scene_depth_in_composite\n- [b]P[/b]: cycle parent [i]position[/i] preset\n- [b]R[/b]: cycle parent [i]rotation[/i] preset\n- [b]S[/b]: cycle parent [i]scale[/i] preset\n- [b]V[/b]: print transform verification snapshot\n\nCurrent render state\n- effect enabled: %s\n- display_mode: %s\n- debug_view: %s\n- ignore scene depth in composite: %s\n\nCamera\n- %s\n\nParent anchor\n- %s\n\nSplat global transform\n- %s\n\nRegistry upload snapshot\n- %s" % [
+	_hud_label.text = "[b]GDGS render-path tweak harness[/b]\nLoaded source: %s\n\nCamera controls\n- Hold [b]Left Mouse[/b]: look / drag camera\n- While dragging: [b]WASD[/b] strafe / forward-back\n- While dragging: [b]Q[/b]/[b]E[/b] move up/down\n- While dragging: hold [b]Shift[/b] for %.1fx speed\n\nRender-path controls\n- [b]C[/b]: toggle compositor effect enabled\n- [b]M[/b]: cycle display_mode\n- [b]D[/b]: cycle debug_view\n- [b]I[/b]: toggle ignore_scene_depth_in_composite\n- [b]P[/b]: cycle parent [i]position[/i] preset\n- [b]R[/b]: cycle parent [i]rotation[/i] preset\n- [b]S[/b]: cycle parent [i]scale[/i] preset\n- [b]V[/b]: print transform verification snapshot\n\nCurrent render state\n- effect enabled: %s\n- display_mode: %s\n- debug_view: %s\n- ignore scene depth in composite: %s\n\nCamera\n- %s\n\nParent anchor\n- %s\n\nSplat global transform\n- %s\n\nRegistry upload snapshot\n- %s" % [
 		sample_name,
+		CAMERA_SPEED_BOOST_MULTIPLIER,
 		str(effect.enabled),
 		_display_mode_name(int(effect.display_mode)),
 		_debug_view_name(int(effect.debug_view)),
@@ -314,6 +337,11 @@ func _update_hud() -> void:
 
 	if _status_label != null:
 		_status_label.text = _load_status_message
+	if _progress_bar != null:
+		_progress_bar.value = clampf(_load_progress * 100.0, 0.0, 100.0)
+		_progress_bar.indeterminate = _is_loading and not _load_progress_known
+		_progress_bar.show_percentage = _load_progress_known or not _is_loading
+		_progress_bar.visible = _is_loading or _load_progress > 0.0
 	if _load_button != null:
 		_load_button.disabled = _is_loading
 	if _unload_button != null:
@@ -395,7 +423,10 @@ func _load_from_input_source() -> void:
 		return
 
 	_is_loading = true
-	_set_status("Loading %s ..." % source)
+	_load_phase = "starting"
+	_load_progress = 0.0
+	_load_progress_known = false
+	_set_status("Loading %s …" % source)
 	_update_hud()
 
 	var result: Dictionary = await _runtime_loader.load_from_source(source)
@@ -403,9 +434,15 @@ func _load_from_input_source() -> void:
 		if _splat_node != null:
 			_splat_node.set("gaussian", result["resource"])
 		_loaded_source = String(result.get("resolved_source", source))
+		_load_phase = String(result.get("phase", "ready"))
+		_load_progress = 1.0
+		_load_progress_known = true
 		_set_status(result.get("message", "Load complete."))
 		print("[gdgs-harness] %s" % _load_status_message)
 	else:
+		_load_phase = String(result.get("phase", _load_phase))
+		_load_progress = clampf(float(result.get("progress", _load_progress)), 0.0, 1.0)
+		_load_progress_known = bool(result.get("progress_known", _load_progress_known))
 		_set_status("Load failed: %s" % result.get("message", "Unknown error"))
 		printerr("[gdgs-harness] %s" % _load_status_message)
 
@@ -419,10 +456,31 @@ func _on_unload_pressed() -> void:
 	if _splat_node != null:
 		_splat_node.set("gaussian", null)
 	_loaded_source = "<unloaded>"
+	_load_phase = "idle"
+	_load_progress = 0.0
+	_load_progress_known = false
 	_set_status("Unloaded GaussianResource from persistent GaussianSplatNode.")
 	print("[gdgs-harness] %s" % _load_status_message)
 	_update_hud()
 	call_deferred("_print_transform_snapshot")
+
+func _on_runtime_loader_load_started(status: Dictionary) -> void:
+	_is_loading = true
+	_apply_loader_status(status)
+
+func _on_runtime_loader_load_progressed(status: Dictionary) -> void:
+	_apply_loader_status(status)
+
+func _on_runtime_loader_load_finished(result: Dictionary) -> void:
+	_apply_loader_status(result)
+
+func _apply_loader_status(status: Dictionary) -> void:
+	_load_phase = String(status.get("phase", _load_phase))
+	_load_progress = clampf(float(status.get("progress", _load_progress)), 0.0, 1.0)
+	_load_progress_known = bool(status.get("progress_known", _load_progress_known))
+	if status.has("status"):
+		_set_status(String(status.get("status", _load_status_message)))
+	_update_hud()
 
 func _set_status(message: String) -> void:
 	_load_status_message = message

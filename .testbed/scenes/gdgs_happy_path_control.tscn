@@ -24,12 +24,12 @@ script = ExtResource("4_ntsa8")
 [sub_resource type="Compositor" id="Compositor_vfr22"]
 compositor_effects = Array[CompositorEffect]([SubResource("CompositorEffect_arpr1")])
 
-[node name="GdgsHappyPathControl" type="Node3D" unique_id=863137755]
+[node name="GdgsHappyPathControl" type="Node3D" unique_id=175204534]
 script = ExtResource("1_knnmi")
 
-[node name="SplatAnchor" type="Node3D" parent="." unique_id=1520617841]
+[node name="SplatAnchor" type="Node3D" parent="." unique_id=831676896]
 
-[node name="GaussianSplatNode" type="VisualInstance3D" parent="SplatAnchor" unique_id=1123907360]
+[node name="GaussianSplatNode" type="VisualInstance3D" parent="SplatAnchor" unique_id=321032977]
 unique_name_in_owner = false
 process_mode = 0
 process_priority = 0
@@ -48,39 +48,39 @@ layers = 1
 script = ExtResource("2_26rua")
 gaussian = ExtResource("3_80pe4")
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1291993399]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1628380319]
 environment = SubResource("Environment_shyw6")
 compositor = SubResource("Compositor_vfr22")
 
-[node name="CameraRig" type="Node3D" parent="." unique_id=267077297]
+[node name="CameraRig" type="Node3D" parent="." unique_id=2060388966]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 4)
 
-[node name="CameraPitch" type="Node3D" parent="CameraRig" unique_id=977571042]
+[node name="CameraPitch" type="Node3D" parent="CameraRig" unique_id=197104513]
 
-[node name="Camera3D" type="Camera3D" parent="CameraRig/CameraPitch" unique_id=911593156]
+[node name="Camera3D" type="Camera3D" parent="CameraRig/CameraPitch" unique_id=2127291863]
 far = 100.0
 
-[node name="SunLight" type="DirectionalLight3D" parent="." unique_id=1077576219]
+[node name="SunLight" type="DirectionalLight3D" parent="." unique_id=2049672756]
 transform = Transform3D(0.90630776, -0.24240388, 0.34618863, 0, 0.81915206, 0.57357645, -0.42261827, -0.5198368, 0.74240386, 0, 0, 0)
 
-[node name="RuntimeSplatLoader" type="Node" parent="." unique_id=847651333]
+[node name="RuntimeSplatLoader" type="Node" parent="." unique_id=2041265767]
 script = ExtResource("5_dv84e")
 
-[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=133126194]
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1741595093]
 
-[node name="HudMargin" type="MarginContainer" parent="CanvasLayer" unique_id=451650851]
+[node name="HudMargin" type="MarginContainer" parent="CanvasLayer" unique_id=1822017239]
 offset_left = 16.0
 offset_top = 16.0
 offset_right = 900.0
 offset_bottom = 700.0
 
-[node name="HudPanel" type="PanelContainer" parent="CanvasLayer/HudMargin" unique_id=278733050]
+[node name="HudPanel" type="PanelContainer" parent="CanvasLayer/HudMargin" unique_id=162070659]
 layout_mode = 2
 
-[node name="HudVBox" type="VBoxContainer" parent="CanvasLayer/HudMargin/HudPanel" unique_id=872621649]
+[node name="HudVBox" type="VBoxContainer" parent="CanvasLayer/HudMargin/HudPanel" unique_id=888007314]
 layout_mode = 2
 
-[node name="HudLabel" type="RichTextLabel" parent="CanvasLayer/HudMargin/HudPanel/HudVBox" unique_id=1274962733]
+[node name="HudLabel" type="RichTextLabel" parent="CanvasLayer/HudMargin/HudPanel/HudVBox" unique_id=88200024]
 custom_minimum_size = Vector2(700, 0)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -90,43 +90,49 @@ Loaded source: res://assets/splats/demo.compressed.ply"
 fit_content = true
 scroll_active = false
 
-[node name="HudSeparator" type="HSeparator" parent="CanvasLayer/HudMargin/HudPanel/HudVBox" unique_id=1189865171]
+[node name="HudSeparator" type="HSeparator" parent="CanvasLayer/HudMargin/HudPanel/HudVBox" unique_id=1094616348]
 layout_mode = 2
 
-[node name="LoaderControls" type="VBoxContainer" parent="CanvasLayer/HudMargin/HudPanel/HudVBox" unique_id=1971184478]
+[node name="LoaderControls" type="VBoxContainer" parent="CanvasLayer/HudMargin/HudPanel/HudVBox" unique_id=1803900823]
 layout_mode = 2
 
-[node name="SourceRow" type="HBoxContainer" parent="CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls" unique_id=1992727408]
+[node name="SourceRow" type="HBoxContainer" parent="CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls" unique_id=1169662678]
 layout_mode = 2
 
-[node name="SourceLineEdit" type="LineEdit" parent="CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls/SourceRow" unique_id=960172515]
+[node name="SourceLineEdit" type="LineEdit" parent="CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls/SourceRow" unique_id=905731481]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "res://assets/splats/demo.compressed.ply"
 placeholder_text = "res://assets/splats/demo.compressed.ply | /absolute/path/file.ply | https://example.com/file.sog"
 
-[node name="ActionRow" type="HBoxContainer" parent="CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls" unique_id=106851062]
+[node name="ActionRow" type="HBoxContainer" parent="CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls" unique_id=1300517357]
 layout_mode = 2
 
-[node name="BrowseButton" type="Button" parent="CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls/ActionRow" unique_id=279983709]
+[node name="BrowseButton" type="Button" parent="CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls/ActionRow" unique_id=905713477]
 layout_mode = 2
 text = "Browse…"
 
-[node name="LoadButton" type="Button" parent="CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls/ActionRow" unique_id=1718305873]
+[node name="LoadButton" type="Button" parent="CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls/ActionRow" unique_id=1497371542]
 layout_mode = 2
 text = "Load"
 
-[node name="UnloadButton" type="Button" parent="CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls/ActionRow" unique_id=1090879536]
+[node name="UnloadButton" type="Button" parent="CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls/ActionRow" unique_id=748568958]
 layout_mode = 2
 text = "Unload"
 
-[node name="StatusLabel" type="Label" parent="CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls" unique_id=1483946032]
+[node name="StatusLabel" type="Label" parent="CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls" unique_id=1599243223]
 layout_mode = 2
 text = "Ready."
 autowrap_mode = 3
 
-[node name="BrowseDialog" type="FileDialog" parent="CanvasLayer" unique_id=1992786147]
+[node name="LoadingProgressBar" type="ProgressBar" parent="CanvasLayer/HudMargin/HudPanel/HudVBox/LoaderControls" unique_id=835982068]
+visible = false
+custom_minimum_size = Vector2(520, 20)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="BrowseDialog" type="FileDialog" parent="CanvasLayer" unique_id=1832400936]
 title = "Choose a Gaussian Splat file"
 file_mode = 0
 access = 2
-filters = PackedStringArray("*.ply ; Binary PLY", "*.splat ; Legacy SPLAT", "*.sog ; SOG archive")
+filters = PackedStringArray("*.compressed.ply ; Compressed Binary PLY", "*.ply ; Binary PLY", "*.splat ; Legacy SPLAT", "*.sog ; SOG archive")

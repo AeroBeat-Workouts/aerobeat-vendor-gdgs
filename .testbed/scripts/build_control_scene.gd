@@ -173,12 +173,25 @@ func _initialize() -> void:
 	loader_controls.add_child(status_label)
 	status_label.owner = root
 
+	var progress_bar := ProgressBar.new()
+	progress_bar.name = "LoadingProgressBar"
+	progress_bar.min_value = 0.0
+	progress_bar.max_value = 100.0
+	progress_bar.value = 0.0
+	progress_bar.show_percentage = true
+	progress_bar.custom_minimum_size = Vector2(520.0, 20.0)
+	progress_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	progress_bar.visible = false
+	loader_controls.add_child(progress_bar)
+	progress_bar.owner = root
+
 	var browse_dialog := FileDialog.new()
 	browse_dialog.name = "BrowseDialog"
 	browse_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
 	browse_dialog.access = FileDialog.ACCESS_FILESYSTEM
 	browse_dialog.title = "Choose a Gaussian Splat file"
 	browse_dialog.filters = PackedStringArray([
+		"*.compressed.ply ; Compressed Binary PLY",
 		"*.ply ; Binary PLY",
 		"*.splat ; Legacy SPLAT",
 		"*.sog ; SOG archive"
