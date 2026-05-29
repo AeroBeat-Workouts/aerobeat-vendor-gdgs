@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://6yegalby6ndv"
+path="res://.godot/imported/radix_sort_spine.glsl-737d070ebe46057d2a0419b9de8b33ee.res"
+
+[deps]
+
+source_file="res://addons/aerobeat-vendor-gdgs/gdgs/runtime/render/shaders/compute/radix_sort_spine.glsl"
+dest_files=["res://.godot/imported/radix_sort_spine.glsl-737d070ebe46057d2a0419b9de8b33ee.res"]
+
+[params]
+

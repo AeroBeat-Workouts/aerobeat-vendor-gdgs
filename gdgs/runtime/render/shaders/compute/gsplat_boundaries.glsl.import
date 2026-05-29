@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://vsggbscgqen8"
+path="res://.godot/imported/gsplat_boundaries.glsl-821b1c0d85181520aeabb7d3409b5c99.res"
+
+[deps]
+
+source_file="res://addons/aerobeat-vendor-gdgs/gdgs/runtime/render/shaders/compute/gsplat_boundaries.glsl"
+dest_files=["res://.godot/imported/gsplat_boundaries.glsl-821b1c0d85181520aeabb7d3409b5c99.res"]
+
+[params]
+

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://chickensoft.games/schemas/addons.schema.json",
+  "addons": {
+    // Install this repo into the hidden workbench the same way a consumer does.
+    "aerobeat-vendor-gdgs": {
+      "url": "..",
+      "source": "symlink",
+      "subfolder": "/"
+    },
+    // GUT drives the repo-local test suite inside the hidden testbed/workbench.
+    "gut": {
+      "url": "git@github.com:bitwes/Gut.git",
+      "checkout": "main",
+      "subfolder": "/addons/gut"
+    }
+  }
+}
