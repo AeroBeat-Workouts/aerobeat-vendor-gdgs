@@ -6,7 +6,7 @@ This control project now includes a tiny in-scene harness for exercising the app
 
 - Main scene: `res://scenes/gdgs_happy_path_control.tscn`
 - Harness script: `res://scripts/gdgs_tweak_matrix_harness.gd`
-- Compositor effect: `res://addons/gdgs/runtime/compositor/gaussian_compositor_effect.gd`
+- Compositor effect: `res://addons/aerobeat-vendor-gdgs/runtime/compositor/gaussian_compositor_effect.gd`
 
 ## What QA can toggle live
 

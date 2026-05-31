@@ -1,7 +1,7 @@
 @tool
 extends RefCounted
 
-const GaussianResourceBuilder = preload("res://addons/gdgs/importers/builders/gaussian_resource_builder.gd")
+const GaussianResourceBuilder = preload("res://addons/aerobeat-vendor-gdgs/importers/builders/gaussian_resource_builder.gd")
 
 const SH_C0 := 0.28209479177387814
 const SH_COEFF_COUNT := 48

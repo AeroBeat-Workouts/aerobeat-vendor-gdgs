@@ -25,7 +25,7 @@ I then pushed the local reduction one step further with two extra presentation-s
 
 Using GDGS `2.2.0` (upstream commit `be61f8fd28cc9cb4a618a0a2e88591ea81bb17be`) inside a minimal Godot project on an Intel Iris Xe / Wayland Linux machine:
 
-- a README-literal control scene using `GaussianSplatNode` + `WorldEnvironment.compositor` + `res://addons/gdgs/runtime/compositor/gaussian_compositor_effect.gd`
+- a README-literal control scene using `GaussianSplatNode` + `WorldEnvironment.compositor` + `res://addons/aerobeat-vendor-gdgs/runtime/compositor/gaussian_compositor_effect.gd`
 - with the bundled sample asset `samples/assets/demo.compressed.ply`
 
 fails in two consistent ways:
@@ -79,12 +79,12 @@ and whose project root is:
 
 The scene follows the README quick-start path as literally as practical:
 
-1. plugin available at `res://addons/gdgs`
+1. plugin available at `res://addons/aerobeat-vendor-gdgs`
 2. sample asset at `res://samples/assets/demo.compressed.ply`
 3. `GaussianSplatNode`
 4. `WorldEnvironment`
 5. `WorldEnvironment.compositor = Compositor`
-6. `CompositorEffect` script set to `res://addons/gdgs/runtime/compositor/gaussian_compositor_effect.gd`
+6. `CompositorEffect` script set to `res://addons/aerobeat-vendor-gdgs/runtime/compositor/gaussian_compositor_effect.gd`
 
 Only minimal extras were added so the scene is usable:
 
@@ -295,7 +295,7 @@ I tried to eliminate broad integration mistakes before writing this up.
 
 ### Ruled out with a minimal control project
 
-- not using the plugin's expected folder layout (`res://addons/gdgs`)
+- not using the plugin's expected folder layout (`res://addons/aerobeat-vendor-gdgs`)
 - not using the plugin's own sample asset
 - not following the README scene structure
 - broad app-wrapper wiring mistakes in a larger downstream project

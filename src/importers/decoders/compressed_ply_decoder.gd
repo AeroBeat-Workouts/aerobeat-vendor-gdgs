@@ -1,8 +1,8 @@
 @tool
 extends RefCounted
 
-const BinaryPlyReader = preload("res://addons/gdgs/importers/parsers/binary_ply_reader.gd")
-const GaussianResourceBuilder = preload("res://addons/gdgs/importers/builders/gaussian_resource_builder.gd")
+const BinaryPlyReader = preload("res://addons/aerobeat-vendor-gdgs/importers/parsers/binary_ply_reader.gd")
+const GaussianResourceBuilder = preload("res://addons/aerobeat-vendor-gdgs/importers/builders/gaussian_resource_builder.gd")
 
 const SH_C0 := 0.28209479177387814
 const SQRT2 := 1.4142135623730951

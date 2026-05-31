@@ -3,12 +3,12 @@
 importer="glsl"
 type="RDShaderFile"
 uid="uid://htvg410ebca"
-path="res://.godot/imported/radix_sort_upsweep.glsl-1647c806f644de48e71725e46e4e61b2.res"
+path="res://.godot/imported/radix_sort_upsweep.glsl-3c0ca38341ce34141b8cc094df933719.res"
 
 [deps]
 
-source_file="res://addons/gdgs/runtime/render/shaders/compute/radix_sort_upsweep.glsl"
-dest_files=["res://.godot/imported/radix_sort_upsweep.glsl-1647c806f644de48e71725e46e4e61b2.res"]
+source_file="res://addons/aerobeat-vendor-gdgs/runtime/render/shaders/compute/radix_sort_upsweep.glsl"
+dest_files=["res://.godot/imported/radix_sort_upsweep.glsl-3c0ca38341ce34141b8cc094df933719.res"]
 
 [params]
 

@@ -7,8 +7,8 @@ const SAMPLE_ASSET_PATHS := [
 	"res://assets/splats/demo.sog",
 ]
 const DEFAULT_SOURCE_PATH := "res://assets/splats/demo.compressed.ply"
-const COMPOSITOR_EFFECT_SCRIPT_PATH := "res://addons/gdgs/runtime/compositor/gaussian_compositor_effect.gd"
-const GAUSSIAN_SPLAT_NODE_SCRIPT_PATH := "res://addons/gdgs/runtime/nodes/gaussian_splat_node.gd"
+const COMPOSITOR_EFFECT_SCRIPT_PATH := "res://addons/aerobeat-vendor-gdgs/runtime/compositor/gaussian_compositor_effect.gd"
+const GAUSSIAN_SPLAT_NODE_SCRIPT_PATH := "res://addons/aerobeat-vendor-gdgs/runtime/nodes/gaussian_splat_node.gd"
 const HARNESS_SCRIPT_PATH := "res://scripts/gdgs_tweak_matrix_harness.gd"
 const RUNTIME_LOADER_SCRIPT_PATH := "res://scripts/gdgs_runtime_splat_loader.gd"
 

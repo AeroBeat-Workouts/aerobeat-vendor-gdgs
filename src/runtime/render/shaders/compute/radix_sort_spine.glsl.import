@@ -3,12 +3,12 @@
 importer="glsl"
 type="RDShaderFile"
 uid="uid://6yegalby6ndv"
-path="res://.godot/imported/radix_sort_spine.glsl-1bbd47c4d26674a89c732ae2a9577991.res"
+path="res://.godot/imported/radix_sort_spine.glsl-63d58e49734c3929fd08c59fd30ea283.res"
 
 [deps]
 
-source_file="res://addons/gdgs/runtime/render/shaders/compute/radix_sort_spine.glsl"
-dest_files=["res://.godot/imported/radix_sort_spine.glsl-1bbd47c4d26674a89c732ae2a9577991.res"]
+source_file="res://addons/aerobeat-vendor-gdgs/runtime/render/shaders/compute/radix_sort_spine.glsl"
+dest_files=["res://.godot/imported/radix_sort_spine.glsl-63d58e49734c3929fd08c59fd30ea283.res"]
 
 [params]
 

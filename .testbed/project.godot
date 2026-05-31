@@ -16,4 +16,4 @@ config/features=PackedStringArray("4.6", "Forward Plus")
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/gdgs/plugin.cfg")
+enabled=PackedStringArray("res://addons/aerobeat-vendor-gdgs/plugin.cfg")

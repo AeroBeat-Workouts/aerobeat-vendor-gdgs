@@ -1,5 +1,5 @@
 @tool
-@icon("res://addons/gdgs/editor/icons/gaussian_resource.svg")
+@icon("res://addons/aerobeat-vendor-gdgs/editor/icons/gaussian_resource.svg")
 extends Resource
 class_name GaussianResource
 

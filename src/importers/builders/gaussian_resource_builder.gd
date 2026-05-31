@@ -1,7 +1,7 @@
 @tool
 extends RefCounted
 
-const GaussianResourceScript = preload("res://addons/gdgs/runtime/resources/gaussian_resource.gd")
+const GaussianResourceScript = preload("res://addons/aerobeat-vendor-gdgs/runtime/resources/gaussian_resource.gd")
 
 const STRUCT_SIZE := 60
 const SH_FLOAT_COUNT := 48

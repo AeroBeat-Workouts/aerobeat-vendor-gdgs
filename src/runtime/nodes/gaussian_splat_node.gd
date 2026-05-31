@@ -1,9 +1,9 @@
 @tool
-@icon("res://addons/gdgs/editor/icons/gaussian_splat_node.svg")
+@icon("res://addons/aerobeat-vendor-gdgs/editor/icons/gaussian_splat_node.svg")
 extends VisualInstance3D
 class_name GaussianSplatNode
 
-const MANAGER_SCRIPT := preload("res://addons/gdgs/runtime/render/gaussian_render_manager.gd")
+const MANAGER_SCRIPT := preload("res://addons/aerobeat-vendor-gdgs/runtime/render/gaussian_render_manager.gd")
 const MANAGER_NODE_NAME := "_GdgsGaussianRenderManager"
 const MANAGER_PENDING_META := "_gdgs_manager_pending"
 

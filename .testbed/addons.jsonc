@@ -2,7 +2,7 @@
   "$schema": "https://chickensoft.games/schemas/addons.schema.json",
   "addons": {
     // Install this repo into the hidden workbench the same way a consumer does.
-    "gdgs": {
+    "aerobeat-vendor-gdgs": {
       "url": "..",
       "source": "symlink",
       "subfolder": "/src"

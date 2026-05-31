@@ -1,6 +1,6 @@
 extends RefCounted
 
-const BinaryPlyReader = preload("res://addons/gdgs/importers/parsers/binary_ply_reader.gd")
+const BinaryPlyReader = preload("res://addons/aerobeat-vendor-gdgs/importers/parsers/binary_ply_reader.gd")
 
 func read_ply(request: Dictionary) -> Dictionary:
 	var format := String(request.get("format", ""))

@@ -1,9 +1,9 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://scripts/gdgs_tweak_matrix_harness.gd" id="1_knnmi"]
-[ext_resource type="Script" path="res://addons/gdgs/runtime/nodes/gaussian_splat_node.gd" id="2_26rua"]
+[ext_resource type="Script" path="res://addons/aerobeat-vendor-gdgs/runtime/nodes/gaussian_splat_node.gd" id="2_26rua"]
 [ext_resource type="Resource" path="res://assets/splats/demo.compressed.ply" id="3_80pe4"]
-[ext_resource type="Script" path="res://addons/gdgs/runtime/compositor/gaussian_compositor_effect.gd" id="4_ntsa8"]
+[ext_resource type="Script" path="res://addons/aerobeat-vendor-gdgs/runtime/compositor/gaussian_compositor_effect.gd" id="4_ntsa8"]
 [ext_resource type="Script" path="res://scripts/gdgs_runtime_splat_loader.gd" id="5_dv84e"]
 
 [sub_resource type="Environment" id="Environment_shyw6"]

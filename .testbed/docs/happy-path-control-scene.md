@@ -6,7 +6,7 @@ This repo now includes a minimal Godot control project that follows the upstream
 
 - Project root: `res://` at this repo root
 - Main scene: `res://scenes/gdgs_happy_path_control.tscn`
-- Plugin path: `res://addons/gdgs`
+- Plugin path: `res://addons/aerobeat-vendor-gdgs`
 - Sample asset: `res://samples/assets/demo.compressed.ply`
 
 ## README parity
@@ -16,7 +16,7 @@ The control scene contains the exact README-required core pieces:
 1. `GaussianSplatNode`
 2. `WorldEnvironment`
 3. `WorldEnvironment.compositor = Compositor`
-4. a `CompositorEffect` whose script is `res://addons/gdgs/runtime/compositor/gaussian_compositor_effect.gd`
+4. a `CompositorEffect` whose script is `res://addons/aerobeat-vendor-gdgs/runtime/compositor/gaussian_compositor_effect.gd`
 
 Extras are intentionally minimal: one `Camera3D`, one `DirectionalLight3D`, a `SplatAnchor` parent node for the loaded sample asset, and a small HUD label describing what QA is looking at.
 

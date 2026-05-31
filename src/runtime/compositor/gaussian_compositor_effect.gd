@@ -3,8 +3,8 @@ class_name GaussianCompositorEffect
 extends CompositorEffect
 
 const WORKGROUP_SIZE := 16
-const MANAGER_SCRIPT := preload("res://addons/gdgs/runtime/render/gaussian_render_manager.gd")
-const DIRECT_TEXTURE_SHADER := preload("res://addons/gdgs/runtime/debug/shaders/direct_texture_overlay.gdshader")
+const MANAGER_SCRIPT := preload("res://addons/aerobeat-vendor-gdgs/runtime/render/gaussian_render_manager.gd")
+const DIRECT_TEXTURE_SHADER := preload("res://addons/aerobeat-vendor-gdgs/runtime/debug/shaders/direct_texture_overlay.gdshader")
 const DIRECT_TEXTURE_WORLD_OVERLAY_NAME := "_GdgsDirectTextureWorldOverlay"
 const DIRECT_TEXTURE_CANVAS_LAYER_NAME := "_GdgsDirectTextureCanvasLayer"
 const DIRECT_TEXTURE_CANVAS_RECT_NAME := "_GdgsDirectTextureCanvasRect"
@@ -344,7 +344,7 @@ func initialize_compute_shader() -> void:
 	if not rd:
 		return
 
-	var glsl_file: RDShaderFile = load("res://addons/gdgs/runtime/compositor/shaders/gaussian_composite.glsl")
+	var glsl_file: RDShaderFile = load("res://addons/aerobeat-vendor-gdgs/runtime/compositor/shaders/gaussian_composite.glsl")
 	if glsl_file == null:
 		return
 

@@ -14,7 +14,7 @@ This repo is the **vendor lane** only.
   `aerobeat-tool-gaussian-splat-loader`.
 - When a GodotEnv manifest needs the raw plugin path for runtime/editor support,
   it should point to this repo's `src` subfolder so the installed addon lands at
-  `res://addons/gdgs`, rather than fetching third-party upstream directly.
+  `res://addons/aerobeat-vendor-gdgs`, rather than fetching third-party upstream directly.
 
 ## Pin
 
@@ -32,12 +32,13 @@ This repo is the **vendor lane** only.
 ## Consuming via GodotEnv
 
 Use the repo URL with the `src` subfolder so the installed addon lands at
-`res://addons/gdgs` and the upstream hardcoded paths continue to work.
+`res://addons/aerobeat-vendor-gdgs`. The vendored runtime in this repo now
+expects that explicit mounted addon identity.
 
 ```jsonc
 {
   "addons": {
-    "gdgs": {
+    "aerobeat-vendor-gdgs": {
       "url": "git@github.com:AeroBeat-Workouts/aerobeat-vendor-gdgs.git",
       "checkout": "main",
       "subfolder": "/src"

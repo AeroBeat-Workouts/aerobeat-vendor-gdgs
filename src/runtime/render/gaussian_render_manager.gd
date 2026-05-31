@@ -2,9 +2,9 @@
 extends Node
 class_name GaussianRenderManager
 
-const SceneRegistryScript := preload("res://addons/gdgs/runtime/render/gaussian_scene_registry.gd")
-const GpuStateCacheScript := preload("res://addons/gdgs/runtime/render/gaussian_gpu_state_cache.gd")
-const RendererScript := preload("res://addons/gdgs/runtime/render/gaussian_renderer.gd")
+const SceneRegistryScript := preload("res://addons/aerobeat-vendor-gdgs/runtime/render/gaussian_scene_registry.gd")
+const GpuStateCacheScript := preload("res://addons/aerobeat-vendor-gdgs/runtime/render/gaussian_gpu_state_cache.gd")
+const RendererScript := preload("res://addons/aerobeat-vendor-gdgs/runtime/render/gaussian_renderer.gd")
 
 static var _instance
 

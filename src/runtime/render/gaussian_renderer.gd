@@ -2,7 +2,7 @@
 extends RefCounted
 class_name GaussianRenderer
 
-const RenderingDeviceContext := preload("res://addons/gdgs/runtime/render/gaussian_rendering_device_context.gd")
+const RenderingDeviceContext := preload("res://addons/aerobeat-vendor-gdgs/runtime/render/gaussian_rendering_device_context.gd")
 const RADIX := 256
 const MAX_SORT_ELEMENTS_PER_SPLAT := 10
 

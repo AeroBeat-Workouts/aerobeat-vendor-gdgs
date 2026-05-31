@@ -9,10 +9,10 @@ var import_plugin: EditorImportPlugin
 var gizmo_plugin: EditorNode3DGizmoPlugin
 
 func _enter_tree() -> void:
-	import_plugin = preload("res://addons/gdgs/importers/gaussian_import_plugin.gd").new()
+	import_plugin = preload("res://addons/aerobeat-vendor-gdgs/importers/gaussian_import_plugin.gd").new()
 	add_import_plugin(import_plugin)
 
-	gizmo_plugin = preload("res://addons/gdgs/editor/gizmos/gaussian_splat_gizmo_plugin.gd").new()
+	gizmo_plugin = preload("res://addons/aerobeat-vendor-gdgs/editor/gizmos/gaussian_splat_gizmo_plugin.gd").new()
 	add_node_3d_gizmo_plugin(gizmo_plugin)
 
 	print("[gdgs] enable gaussian splatting plugin")

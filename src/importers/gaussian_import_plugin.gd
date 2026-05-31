@@ -1,12 +1,12 @@
 @tool
 extends EditorImportPlugin
 
-const BinaryPlyReader = preload("res://addons/gdgs/importers/parsers/binary_ply_reader.gd")
-const GaussianResourceBuilder = preload("res://addons/gdgs/importers/builders/gaussian_resource_builder.gd")
-const StandardPlyDecoder = preload("res://addons/gdgs/importers/decoders/standard_ply_decoder.gd")
-const CompressedPlyDecoder = preload("res://addons/gdgs/importers/decoders/compressed_ply_decoder.gd")
-const SplatDecoder = preload("res://addons/gdgs/importers/decoders/splat_decoder.gd")
-const SogDecoder = preload("res://addons/gdgs/importers/decoders/sog_decoder.gd")
+const BinaryPlyReader = preload("res://addons/aerobeat-vendor-gdgs/importers/parsers/binary_ply_reader.gd")
+const GaussianResourceBuilder = preload("res://addons/aerobeat-vendor-gdgs/importers/builders/gaussian_resource_builder.gd")
+const StandardPlyDecoder = preload("res://addons/aerobeat-vendor-gdgs/importers/decoders/standard_ply_decoder.gd")
+const CompressedPlyDecoder = preload("res://addons/aerobeat-vendor-gdgs/importers/decoders/compressed_ply_decoder.gd")
+const SplatDecoder = preload("res://addons/aerobeat-vendor-gdgs/importers/decoders/splat_decoder.gd")
+const SogDecoder = preload("res://addons/aerobeat-vendor-gdgs/importers/decoders/sog_decoder.gd")
 
 func _get_priority() -> float:
 	return 2.0
