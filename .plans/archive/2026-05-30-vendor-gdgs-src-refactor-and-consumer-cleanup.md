@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-30  
 **Status:** In Progress  
-**Last Updated:** 2026-05-30 22:14 EDT  
+**Last Updated:** 2026-05-30 23:12 EDT  
 **Blocked Reason:** None  
 **Agent:** `chip`
 
@@ -214,17 +214,57 @@ This plan should produce a clean post-refactor state where the vendor repo owns 
 - any scenes/scripts/tests/docs that still assume `res://addons/gdgs/...`
 - any restore/install helpers or validation scripts impacted by the mount identity rename
 
-**Status:** ⏳ Pending
+**Status:** ✅ Complete
 
-**Results:** Appended by Derrick as a corrected post-closure target: bare `gdgs` mount identity is no longer acceptable end state.
+**Results:** Completed via bead `oc-2qz`. Switched the canonical installed GDGS addon identity from bare `gdgs` to explicit `aerobeat-vendor-gdgs`. Updated vendor source/runtime hardcoded paths from `res://addons/gdgs/...` to `res://addons/aerobeat-vendor-gdgs/...`, updated affected manifests/testbeds in `aerobeat-vendor-gdgs`, `aerobeat-tool-gaussian-splat-loader`, `aerobeat-environment-community`, and `aerobeat-assembly-community`, and aligned environment test expectations/docs to the clarified contract. Validation passed across all affected repos: vendor clean testbed reinstall/import plus runtime validation scripts; loader clean `.testbed` reinstall/import plus GUT and smoke scene; environment clean `.testbed` reinstall/import plus GUT and splat scene; assembly `./scripts/restore-addons.sh` plus import and GUT with the same pre-existing risky non-asserting item. Commits pushed: `3825018` (`aerobeat-vendor-gdgs`), `ca70839` (`aerobeat-tool-gaussian-splat-loader`), `e8a02ee` (`aerobeat-environment-community`), and `a351fa8` (`aerobeat-assembly-community`).
+
+---
+
+### Task 9: QA explicit `aerobeat-vendor-gdgs` mount identity rollout
+
+**Bead ID:** `oc-4m5`  
+**SubAgent:** `primary` (for `qa`)  
+**Role:** `qa`  
+**References:** `REF-03`, `REF-04`, `REF-05`  
+**Prompt:** Verify the explicit `aerobeat-vendor-gdgs` mount identity rollout after Task 8. Confirm the affected repos no longer rely on bare `addons/gdgs` as the contract identity, confirm `res://addons/aerobeat-vendor-gdgs/...` fallout is consistent where required, and run the highest-fidelity repo-local validations available across the touched repos. Distinguish acceptable generated mirrors from stale ownership drift. Claim the bead on start and report exact evidence.
+
+**Folders Created/Deleted/Modified:**
+- None
+
+**Files Created/Deleted/Modified:**
+- None
+
+**Status:** ✅ Complete
+
+**Results:** Completed via bead `oc-4m5`. QA verified the explicit `aerobeat-vendor-gdgs` mount identity rollout across `aerobeat-vendor-gdgs`, `aerobeat-tool-gaussian-splat-loader`, `aerobeat-environment-community`, and `aerobeat-assembly-community`. No non-doc/non-plan usages of bare contract identity (`res://addons/gdgs/` or bare `addons/gdgs`) remained. Consumer/testbed manifests now pin explicit addon identity `aerobeat-vendor-gdgs` with `subfolder: "/src"` where required, and the required runtime fallout to `res://addons/aerobeat-vendor-gdgs/...` is present and consistent in loader/environment surfaces. Validation passed across all touched repos, with only the same pre-existing assembly risky test item (`test_cleanup_on_exit did not assert`) remaining. QA also confirmed the mounted trees are acceptable generated mirrors rather than stale ownership drift.
+
+---
+
+### Task 10: Audit explicit `aerobeat-vendor-gdgs` mount identity rollout
+
+**Bead ID:** `oc-jdr`  
+**SubAgent:** `primary` (for `auditor`)  
+**Role:** `auditor`  
+**References:** `REF-03`, `REF-04`, `REF-05`  
+**Prompt:** Independently truth-check the explicit `aerobeat-vendor-gdgs` mount identity rollout after QA completes. Confirm the old bare `gdgs` mount identity is no longer the contract surface, that the touched repos are aligned to the new explicit identity, and that any remaining `addons/...` trees are acceptable generated mirrors rather than stale source-owned drift. Close the bead only if the rollout is actually done.
+
+**Folders Created/Deleted/Modified:**
+- None
+
+**Files Created/Deleted/Modified:**
+- None
+
+**Status:** ✅ Complete
+
+**Results:** Completed via bead `oc-jdr`. Independent audit confirmed the explicit `aerobeat-vendor-gdgs` mount identity rollout is actually done. No non-doc/non-plan references to bare contract paths remained across `aerobeat-vendor-gdgs`, `aerobeat-tool-gaussian-splat-loader`, `aerobeat-environment-community`, and `aerobeat-assembly-community`; manifests now pin `aerobeat-vendor-gdgs` from `subfolder: "/src"`; runtime/source fallout is aligned to `res://addons/aerobeat-vendor-gdgs/...`; and any remaining `addons/...` trees are acceptable generated mirrors rather than stale source-owned drift.
 
 ---
 
 ## Final Results
 
-**Status:** ⚠️ Partial
+**Status:** ✅ Complete
 
-**What We Built:** Completed the first GDGS blocker slice: `aerobeat-vendor-gdgs` now owns its published runtime surface under `/src/`, affected consumer/testbed manifests were updated to the new owner layout, stale `aerobeat-tool-gaussian-splat` naming was repaired in environment-community, and the stale assembly root-owner copy was removed so only generated mirrors remained under the old bare `gdgs` mount identity. Derrick then clarified that the end-state should not use a bare `gdgs` installed addon folder at all; assembly-community and other consumers should depend explicitly on `aerobeat-vendor-gdgs` plus `aerobeat-tool-gaussian-splat-loader`. This plan therefore also now carries appended follow-on work for `aerobeat-vendor-modio` testbed layout cleanup, family-wide stale `restore-testbed-addons.sh` reference cleanup, and the new explicit vendor mount identity refactor.
+**What We Built:** Completed the full GDGS and follow-on cleanup execution slice. `aerobeat-vendor-gdgs` now owns its published runtime surface under `/src/`; affected consumer/testbed manifests were updated first to the new owner layout and then to the explicit `aerobeat-vendor-gdgs` mounted identity; stale `aerobeat-tool-gaussian-splat` naming was repaired in environment-community; stale `restore-testbed-addons.sh` references were removed family-wide; and `aerobeat-vendor-modio` was reshaped so docs, harness scripts, and configs now live under the hidden `/.testbed/` structure.
 
 **Reference Check:**
 - `REF-01` and `REF-02` defined the blocker cluster and exact duplicate paths, which were used to drive both the initial fixes and the final closure checks.
@@ -239,6 +279,11 @@ This plan should produce a clean post-refactor state where the vendor repo owns 
 - `741faaf` - `Rehome modio docs and harness files into testbed`
 - `4c9be18` - `Remove stale restore helper docs`
 - `bcc2e09` - `Remove stale restore helper reference`
+- `9b9f876` - `Remove stale restore helper references`
+- `3825018` - `Use explicit aerobeat-vendor-gdgs addon path`
+- `ca70839` - `Align gdgs dependency with explicit vendor addon path`
+- `e8a02ee` - `Adopt explicit vendor gdgs addon identity`
+- `a351fa8` - `Pin explicit vendor gdgs addon in assembly`
 
 **Lessons Learned:**
 - The main duplicate-runtime problem was not the intended vendor+wrapper pairing; it was stale embedded consumer ownership and stale dependency naming.
