@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-30  
 **Status:** In Progress  
-**Last Updated:** 2026-05-30 21:57 EDT  
+**Last Updated:** 2026-05-30 22:14 EDT  
 **Blocked Reason:** None  
 **Agent:** `chip`
 
@@ -163,15 +163,15 @@ This plan should produce a clean post-refactor state where the vendor repo owns 
 - loose vendor-modio files currently under `/.testbed/`
 - any related docs/manifests/path references affected by the moves
 
-**Status:** 🔄 In Progress
+**Status:** ✅ Complete
 
-**Results:** Bead `oc-xgj4` is claimed and the coder pass is running in `aerobeat-vendor-modio` for the hidden testbed layout refactor (`/docs/` -> `/.testbed/docs/`, loose `/.testbed/` scripts -> `/.testbed/scripts/`, relevant config files -> `/.testbed/configs/`). Awaiting coder completion evidence.
+**Results:** Completed via bead `oc-xgj4`. In `aerobeat-vendor-modio`, repo-root `docs/` moved into `/.testbed/docs/`, loose hidden-testbed harness files moved into `/.testbed/scripts/`, and relevant config templates moved into `/.testbed/configs/`. Updated fallout included `README.md`, `.gitignore`, testbed scripts/preloads, test files, and moved docs referencing the old harness/config paths. Validation passed with `godot --headless --path .testbed --import`, `res://tests/validate_scaffold.gd`, `res://tests/validate_modio_testbed_scenes.gd`, and GUT (`100/100` passing). Commit `741faaf` (`Rehome modio docs and harness files into testbed`) was pushed to `origin/main`.
 
 ---
 
 ### Task 7: Remove stale `restore-testbed-addons.sh` references and any live instances
 
-**Bead ID:** `Pending`  
+**Bead ID:** `oc-3oi`  
 **SubAgent:** `primary` (for `coder`)  
 **Role:** `coder`  
 **References:** `REF-03`  
@@ -186,15 +186,15 @@ This plan should produce a clean post-refactor state where the vendor repo owns 
 - `/home/derrick/.openclaw/workspace/projects/aerobeat/aerobeat-vendor-gdgs/README.md`
 - any additional stale reference locations discovered during execution
 
-**Status:** ⏳ Pending
+**Status:** ✅ Complete
 
-**Results:** Appended by Derrick after a family audit found stale references but no live `restore-testbed-addons.sh` files.
+**Results:** Completed via bead `oc-3oi`. Family-wide search confirmed there were no live `restore-testbed-addons.sh` script files left; the remaining hits were stale doc references only. Updated `aerobeat-environment-community/README.md` to replace the deleted helper script with the current manual delete-first GodotEnv restore flow and pushed commit `4c9be18` (`Remove stale restore helper docs`). Updated `aerobeat-docs/docs/architecture/repo-structure-reference.md` to remove the stale conceptual `scripts/restore-testbed-addons.sh` tree entry and pushed commit `bcc2e09` (`Remove stale restore helper reference`). Updated `aerobeat-vendor-gdgs/README.md` to stop pointing consumers at nonexistent restore helper scripts and instead document the canonical repo-local cleanup + `godotenv addons install` flow. Final validation for this slice was a clean family search: `rg -n "restore-testbed-addons\\.sh" /home/derrick/.openclaw/workspace/projects/aerobeat` returned no matches after the edits.
 
 ---
 
 ### Task 8: Rename assembly/wrapper consumer mount identity from bare `gdgs` to explicit `aerobeat-vendor-gdgs`
 
-**Bead ID:** `Pending`  
+**Bead ID:** `oc-2qz`  
 **SubAgent:** `primary` (for `coder`)  
 **Role:** `coder`  
 **References:** `REF-03`, `REF-04`, `REF-05`  
@@ -236,6 +236,9 @@ This plan should produce a clean post-refactor state where the vendor repo owns 
 - `ceeea40` - `Update gdgs vendor mount for src layout`
 - `bd87b6b` - `Fix gaussian-splat testbed consumer paths`
 - `b08b3e6` - `Mount gdgs testbed from src`
+- `741faaf` - `Rehome modio docs and harness files into testbed`
+- `4c9be18` - `Remove stale restore helper docs`
+- `bcc2e09` - `Remove stale restore helper reference`
 
 **Lessons Learned:**
 - The main duplicate-runtime problem was not the intended vendor+wrapper pairing; it was stale embedded consumer ownership and stale dependency naming.
