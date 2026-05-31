@@ -5,7 +5,7 @@
     "gdgs": {
       "url": "..",
       "source": "symlink",
-      "subfolder": "/gdgs"
+      "subfolder": "/src"
     },
     // GUT drives the repo-local test suite inside the hidden testbed/workbench.
     "gut": {

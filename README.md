@@ -8,12 +8,12 @@ plugin (`gdgs`) for AeroBeat.
 
 This repo is the **vendor lane** only.
 
-- It stores the pinned upstream plugin payload under `gdgs/`.
+- It stores the pinned upstream plugin payload under `src/`.
 - It is **not** the AeroBeat-facing runtime API surface.
 - Product/testbed repos should consume the stable AeroBeat wrapper from
   `aerobeat-tool-gaussian-splat-loader`.
 - When a GodotEnv manifest needs the raw plugin path for runtime/editor support,
-  it should point to this repo's `gdgs` subfolder so the installed addon lands at
+  it should point to this repo's `src` subfolder so the installed addon lands at
   `res://addons/gdgs`, rather than fetching third-party upstream directly.
 
 ## Pin
@@ -25,13 +25,13 @@ This repo is the **vendor lane** only.
 
 ## Layout
 
-- `gdgs/` - vendored upstream plugin payload used by Godot projects.
+- `src/` - vendored upstream plugin payload used by Godot projects.
 - `samples/assets/` - upstream sample splat assets copied locally for validation.
 - `docs/upstream-pin.md` - pinning notes for future updates.
 
 ## Consuming via GodotEnv
 
-Use the repo URL with the `gdgs` subfolder so the installed addon lands at
+Use the repo URL with the `src` subfolder so the installed addon lands at
 `res://addons/gdgs` and the upstream hardcoded paths continue to work.
 
 ```jsonc
@@ -40,7 +40,7 @@ Use the repo URL with the `gdgs` subfolder so the installed addon lands at
     "gdgs": {
       "url": "git@github.com:AeroBeat-Workouts/aerobeat-vendor-gdgs.git",
       "checkout": "main",
-      "subfolder": "/gdgs"
+      "subfolder": "/src"
     }
   }
 }
