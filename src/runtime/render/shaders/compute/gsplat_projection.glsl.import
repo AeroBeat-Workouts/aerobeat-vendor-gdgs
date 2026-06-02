@@ -3,12 +3,12 @@
 importer="glsl"
 type="RDShaderFile"
 uid="uid://bkyq5303xd2am"
-path="res://.godot/imported/gsplat_projection.glsl-6d8588116a8b2736744947212d95b74d.res"
+path="res://.godot/imported/gsplat_projection.glsl-bce9c0edfb5aecda027ec551a31f99cf.res"
 
 [deps]
 
-source_file="res://addons/aerobeat-vendor-gdgs/runtime/render/shaders/compute/gsplat_projection.glsl"
-dest_files=["res://.godot/imported/gsplat_projection.glsl-6d8588116a8b2736744947212d95b74d.res"]
+source_file="res://addons/aerobeat-vendor-gdgs/src/runtime/render/shaders/compute/gsplat_projection.glsl"
+dest_files=["res://.godot/imported/gsplat_projection.glsl-bce9c0edfb5aecda027ec551a31f99cf.res"]
 
 [params]
 

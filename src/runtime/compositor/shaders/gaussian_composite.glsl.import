@@ -3,12 +3,12 @@
 importer="glsl"
 type="RDShaderFile"
 uid="uid://coxmggeuxfrlo"
-path="res://.godot/imported/gaussian_composite.glsl-2b4f819918d8dbe9a67bac155846f593.res"
+path="res://.godot/imported/gaussian_composite.glsl-5b1446f11ea26f501f0bb22c1db63746.res"
 
 [deps]
 
-source_file="res://addons/aerobeat-vendor-gdgs/runtime/compositor/shaders/gaussian_composite.glsl"
-dest_files=["res://.godot/imported/gaussian_composite.glsl-2b4f819918d8dbe9a67bac155846f593.res"]
+source_file="res://addons/aerobeat-vendor-gdgs/src/runtime/compositor/shaders/gaussian_composite.glsl"
+dest_files=["res://.godot/imported/gaussian_composite.glsl-5b1446f11ea26f501f0bb22c1db63746.res"]
 
 [params]
 

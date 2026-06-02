@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b0y7eex72t0pl"
-path="res://.godot/imported/gaussian_splat_node.svg-f007019ba516cd461f4b918d45a3adbd.ctex"
+path="res://.godot/imported/gaussian_splat_node.svg-2787b5bb9eef686d0e41c5c0c2cea3ea.ctex"
 metadata={
 "has_editor_variant": true,
 "vram_texture": false
@@ -11,8 +11,8 @@ metadata={
 
 [deps]
 
-source_file="res://addons/aerobeat-vendor-gdgs/editor/icons/gaussian_splat_node.svg"
-dest_files=["res://.godot/imported/gaussian_splat_node.svg-f007019ba516cd461f4b918d45a3adbd.ctex"]
+source_file="res://addons/aerobeat-vendor-gdgs/src/editor/icons/gaussian_splat_node.svg"
+dest_files=["res://.godot/imported/gaussian_splat_node.svg-2787b5bb9eef686d0e41c5c0c2cea3ea.ctex"]
 
 [params]
 
