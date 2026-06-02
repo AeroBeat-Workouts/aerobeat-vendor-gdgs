@@ -2,7 +2,7 @@
   "$schema": "https://chickensoft.games/schemas/addons.schema.json",
   "addons": {
     "aerobeat-vendor-gdgs": {
-      "url": "..",
+      "url": "../src",
       "source": "symlink",
       "subfolder": "/"
     },
