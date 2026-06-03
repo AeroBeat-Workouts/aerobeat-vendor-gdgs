@@ -28,3 +28,5 @@ AGENTS.md
 .testbed/addons/*
 !.testbed/addons/.editorconfig
 .testbed/.addons/
+
+.testbed/.headless/
