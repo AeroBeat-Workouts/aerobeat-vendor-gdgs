@@ -199,7 +199,7 @@ static func decode(path: String) -> Dictionary:
 
 			for coeff_idx in range(shn_coeffs_per_channel):
 				var centroid_x := (label % 64) * shn_coeffs_per_channel + coeff_idx
-				var centroid_y := int(label / 64)
+				var centroid_y := floori(float(label) / 64.0)
 				var centroid_offset := (centroid_y * int(shn_centroids["width"]) + centroid_x) * 3
 				if centroid_offset + 2 >= shn_centroids_data.size():
 					zip_reader.close()

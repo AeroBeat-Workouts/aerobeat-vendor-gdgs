@@ -74,7 +74,7 @@ static func decode(path: String) -> Dictionary:
 	var sh_data := PackedByteArray()
 	if not sh_element.is_empty():
 		var sh_map: Dictionary = sh_element.get("property_map", {})
-		sh_coeffs_per_channel = int(sh_map.size() / 3)
+		sh_coeffs_per_channel = floori(float(sh_map.size()) / 3.0)
 		sh_stride = int(sh_element.get("stride", 0))
 		sh_data = sh_element.get("data", PackedByteArray())
 		if int(sh_element.get("count", 0)) != count:
@@ -94,7 +94,7 @@ static func decode(path: String) -> Dictionary:
 
 	for i in count:
 		var base := i * vertex_stride
-		var chunk: Dictionary = chunks[int(i / 256)]
+		var chunk: Dictionary = chunks[floori(float(i) / 256.0)]
 
 		var packed_position := int(_read_property(vertex_data, base, vertex_map, "packed_position"))
 		var packed_rotation := int(_read_property(vertex_data, base, vertex_map, "packed_rotation"))

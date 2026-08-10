@@ -12,7 +12,7 @@ class NodeEntry:
 	var instance_index := -1
 	var point_data_byte := PackedByteArray()
 	var model_transform: Transform3D = Transform3D.IDENTITY
-	var visible: bool = true
+	var is_visible: bool = true
 
 var _splat_nodes: Array[Node] = []
 var _node_entries: Dictionary = {}
@@ -110,7 +110,7 @@ func _sync_scene_resources(force_rebuild: bool) -> Dictionary:
 		
 		# Only upload the splat data if we haven't seen this resource yet
 		if not unique_resources.has(gaussian):
-			resource_start_index = merged_point_data.size() / (FLOATS_PER_SPLAT * BYTES_PER_FLOAT)
+			resource_start_index = floori(float(merged_point_data.size()) / float(FLOATS_PER_SPLAT * BYTES_PER_FLOAT))
 			unique_resources[gaussian] = resource_start_index
 			merged_point_data.append_array(entry.point_data_byte)
 		else:
@@ -125,7 +125,7 @@ func _sync_scene_resources(force_rebuild: bool) -> Dictionary:
 			node_instance_ids[i * 2 + 1] = resource_start_index + i # y: Which raw splat data to read
 
 		merged_instance_ids.append_array(node_instance_ids)
-		merged_instance_transforms.append_array(_transform_to_column_major_packed_floats(entry.model_transform, entry.visible))
+		merged_instance_transforms.append_array(_transform_to_column_major_packed_floats(entry.model_transform, entry.is_visible))
 
 		total_point_count += entry.point_count
 		next_instance_index += 1
@@ -171,11 +171,11 @@ func _sync_node_transform(node: Node) -> Dictionary:
 
 	var model_transform := _get_node_transform(node)
 	var model_visible := _get_node_visibility(node)
-	if entry.model_transform == model_transform and entry.visible == model_visible:
+	if entry.model_transform == model_transform and entry.is_visible == model_visible:
 		return {}
 
 	entry.model_transform = model_transform
-	entry.visible = model_visible
+	entry.is_visible = model_visible
 	if entry.instance_index < 0 or _instance_count <= 0:
 		return {}
 
@@ -188,7 +188,7 @@ func _sync_node_transform(node: Node) -> Dictionary:
 func _build_node_entry(node: Node, instance_index: int) -> NodeEntry:
 	var entry := NodeEntry.new()
 	entry.model_transform = _get_node_transform(node)
-	entry.visible = _get_node_visibility(node)
+	entry.is_visible = _get_node_visibility(node)
 
 	var gaussian: Resource = node.get("gaussian")
 	if gaussian == null:
@@ -220,7 +220,7 @@ func _build_instance_transforms_byte() -> PackedByteArray:
 		var entry: NodeEntry = _node_entries.get(node.get_instance_id(), null)
 		if entry == null or entry.point_count <= 0 or entry.instance_index < 0:
 			continue
-		transforms.append_array(_transform_to_column_major_packed_floats(entry.model_transform, entry.visible))
+		transforms.append_array(_transform_to_column_major_packed_floats(entry.model_transform, entry.is_visible))
 	return transforms.to_byte_array()
 
 func _get_node_transform(node: Node) -> Transform3D:
@@ -234,7 +234,7 @@ func _debug_entry_for_node(node: Node, entry: NodeEntry) -> Dictionary:
 		"instance_id": node.get_instance_id(),
 		"instance_index": entry.instance_index,
 		"point_count": entry.point_count,
-		"visible": entry.visible,
+		"visible": entry.is_visible,
 		"model_transform": entry.model_transform
 	}
 	
